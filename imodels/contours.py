@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import matplotlib.pyplot as plt
 
 def ground_truth_rs(x1, x2):
@@ -39,12 +40,17 @@ Z = {
 fig, axes = plt.subplots(1, 3, figsize=(15, 4))
 
 for idx, (key, ax) in enumerate(zip(["set", "list", "tree"], axes)):
-    contour = ax.contourf(X1, X2, Z[key], levels=np.linspace(0, 1, 20))
-    fig.colorbar(contour, ax=ax, label='Score', ticks=[])    
+    contour = ax.contourf(X1, X2, Z[key], levels=np.linspace(0, 1, 20),cmap='PuBu')
+    
+    fig.colorbar(contour, ax=ax, label='Score', ticks=[])       
     ax.set_xlabel('x1')
     ax.set_ylabel('x2')
     ax.set_title(f'Rule ({key})')
 
 plt.tight_layout()
-plt.show()
+#plt.show()
+# Get the directory of the current file
+current_dir = os.path.dirname(os.path.abspath(__file__))
+pdf_path = os.path.join(current_dir, 'contours.pdf')
+plt.savefig(pdf_path)
 
