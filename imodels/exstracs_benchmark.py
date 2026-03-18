@@ -344,8 +344,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help=f"Comma-separated algorithm names. Available: {', '.join(EXSTRACS_ALGORITHMS)}",
     )
     parser.add_argument(
-        "--learning-iterations", type=int, default=10,
-        help="ExSTraCS learning iterations (default: 10000)",
+        "--learning-iterations", type=int, default=100000,
+        help="ExSTraCS learning iterations (default: 100000)",
     )
     parser.add_argument(
         "--population-size", type=int, default=1000,

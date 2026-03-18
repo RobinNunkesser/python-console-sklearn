@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 REQUIRED_COLUMNS = {
@@ -77,6 +78,7 @@ def plot_metric(
     title: str,
     ylabel: str,
     error_bars: str,
+    plot_style: str,
     xscale: str = "linear",
 ) -> None:
     mean_col = f"{metric}_mean"
@@ -95,13 +97,60 @@ def plot_metric(
                 # Clip each error so it never reaches or exceeds the mean value.
                 err_data = err_data.clip(upper=pivot * 0.9999)
 
-    kwargs: dict[str, Any] = {"kind": "barh", "ax": ax}
-    if err_data is not None:
-        # barh: values are on the x-axis, so use xerr (not yerr).
-        kwargs["xerr"] = err_data
-        kwargs["capsize"] = 4
+    if plot_style == "bars":
+        kwargs: dict[str, Any] = {"kind": "barh", "ax": ax}
+        if err_data is not None:
+            # barh: values are on the x-axis, so use xerr (not yerr).
+            kwargs["xerr"] = err_data
+            kwargs["capsize"] = 4
 
-    pivot.plot(**kwargs)
+        pivot.plot(**kwargs)
+    elif plot_style == "dots":
+        datasets = list(pivot.index)
+        algorithms = list(pivot.columns)
+        y_base = np.arange(len(datasets), dtype=float)
+
+        if len(algorithms) <= 1:
+            offsets = np.array([0.0])
+        else:
+            offsets = np.linspace(-0.3, 0.3, num=len(algorithms))
+
+        colors = plt.rcParams.get("axes.prop_cycle", None)
+        palette = colors.by_key().get("color", []) if colors is not None else []
+
+        for idx, algorithm in enumerate(algorithms):
+            color = palette[idx % len(palette)] if palette else None
+            x = pivot[algorithm].to_numpy(dtype=float)
+            y = y_base + offsets[idx]
+            mask = ~np.isnan(x)
+
+            if not mask.any():
+                continue
+
+            if err_data is not None and algorithm in err_data.columns:
+                err_frame = cast(pd.DataFrame, err_data)
+                err = err_frame[algorithm].to_numpy(dtype=float)
+                err = np.nan_to_num(err, nan=0.0)
+                ax.errorbar(
+                    x[mask],
+                    y[mask],
+                    xerr=err[mask],
+                    fmt="o",
+                    capsize=4,
+                    markersize=5,
+                    elinewidth=1.2,
+                    linewidth=1.2,
+                    color=color,
+                    label=algorithm,
+                )
+            else:
+                ax.scatter(x[mask], y[mask], s=36, color=color, label=algorithm)
+
+        ax.set_yticks(y_base, labels=datasets)
+        ax.invert_yaxis()
+    else:
+        raise ValueError(f"Unknown plot_style: {plot_style}")
+
     ax.set_xscale(xscale)
     ax.set_title(title)
     ax.set_xlabel(ylabel)
@@ -110,15 +159,31 @@ def plot_metric(
     ax.legend(title="Algorithm")
 
 
-def plot_results(df: pd.DataFrame, output_dir: Path, plot_mode: str, error_bars: str, no_show: bool) -> None:
+def plot_results(
+    df: pd.DataFrame,
+    output_dir: Path,
+    plot_mode: str,
+    error_bars: str,
+    plot_style: str,
+    no_show: bool,
+) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if plot_mode == "combined":
         fig, axes = plt.subplots(1, 2, figsize=(14, 5), constrained_layout=True)
         f1_ylabel = "F1" if error_bars == "none" else f"F1 (mean +/- {error_bars})"
         size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
-        plot_metric(df, "f1", axes[0], "F1 by Dataset and Algorithm", f1_ylabel, error_bars)
-        plot_metric(df, "model_size", axes[1], "Model Size by Dataset and Algorithm", size_ylabel, error_bars, xscale="log")
+        plot_metric(df, "f1", axes[0], "F1 by Dataset and Algorithm", f1_ylabel, error_bars, plot_style)
+        plot_metric(
+            df,
+            "model_size",
+            axes[1],
+            "Model Size by Dataset and Algorithm",
+            size_ylabel,
+            error_bars,
+            plot_style,
+            xscale="log",
+        )
         out = output_dir / "merged_ucimodels_combined.png"
         fig.savefig(out, dpi=150)
         print(f"Figure saved: {out}")
@@ -131,14 +196,14 @@ def plot_results(df: pd.DataFrame, output_dir: Path, plot_mode: str, error_bars:
     if plot_mode == "separate":
         fig_f1, ax_f1 = plt.subplots(figsize=(8, 5), constrained_layout=True)
         f1_ylabel = "F1" if error_bars == "none" else f"F1 (mean +/- {error_bars})"
-        plot_metric(df, "f1", ax_f1, "F1 by Dataset and Algorithm", f1_ylabel, error_bars)
+        plot_metric(df, "f1", ax_f1, "F1 by Dataset and Algorithm", f1_ylabel, error_bars, plot_style)
         out_f1 = output_dir / "merged_ucimodels_f1.png"
         fig_f1.savefig(out_f1, dpi=150)
         print(f"Figure saved: {out_f1}")
 
         fig_size, ax_size = plt.subplots(figsize=(8, 5), constrained_layout=True)
         size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
-        plot_metric(df, "model_size", ax_size, "Model Size", size_ylabel, error_bars, xscale="log")
+        plot_metric(df, "model_size", ax_size, "Model Size", size_ylabel, error_bars, plot_style, xscale="log")
         out_size = output_dir / "merged_ucimodels_model_size.png"
         fig_size.savefig(out_size, dpi=150)
         print(f"Figure saved: {out_size}")
@@ -164,6 +229,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--plot-mode", default="combined", choices=["combined", "separate"])
+    parser.add_argument("--plot-style", default="dots", choices=["dots", "bars"])
     parser.add_argument("--error-bars", default="std", choices=["none", "std", "ci95"])
     parser.add_argument("--output-dir", default="results")
     parser.add_argument("--no-show", action="store_true", help="Do not show matplotlib windows (save files only)")
@@ -188,6 +254,7 @@ def main() -> None:
         output_dir=Path(args.output_dir),
         plot_mode=args.plot_mode,
         error_bars=args.error_bars,
+        plot_style=args.plot_style,
         no_show=args.no_show,
     )
 
