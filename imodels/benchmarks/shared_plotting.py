@@ -30,12 +30,16 @@ class FontConfig:
 class FigureConfig:
     # Letter-friendly combined layout.
     combined_figsize: tuple[float, float] = (8.5, 11.0)
+    combined_width: float = 8.5
+    combined_height_per_dataset: float = 1
+    combined_min_height: float = 3.0
     separate_figsize: tuple[float, float] = (8.0, 5.4)
     by_dataset_width_per_metric: float = 4.8
     by_dataset_legend_width: float = 2.8
     by_dataset_row_height: float = 2.4
     by_dataset_min_height: float = 5.8
     combined_legend_width_ratio: float = 0.34
+    combined_y_margin: float = 0.01
     separate_height_ratios: tuple[float, float] = (0.2, 1.0)
 
 
@@ -61,6 +65,7 @@ class LegendConfig:
 @dataclass(frozen=True)
 class StyleConfig:
     dataset_band_facecolor: str = "0.96"
+    dataset_band_fill_fraction: float = 1.0
     grid_alpha: float = 0.3
 
 
@@ -179,7 +184,11 @@ def add_dataset_background_bands(ax: plt.Axes, *, config: PlotConfig = DEFAULT_P
 
     for idx, (lower, upper) in enumerate(zip(bounds, bounds[1:])):
         if idx % 2 == 0:
-            ax.axhspan(lower, upper, facecolor=config.style.dataset_band_facecolor, edgecolor="none", zorder=-1)
+            center = (lower + upper) / 2
+            half_height = (upper - lower) * 0.5 * config.style.dataset_band_fill_fraction
+            band_lower = center - half_height
+            band_upper = center + half_height
+            ax.axhspan(band_lower, band_upper, facecolor=config.style.dataset_band_facecolor, edgecolor="none", zorder=-1)
 
 
 def save_figure_outputs(fig: plt.Figure, output_base_path: Path) -> None:
@@ -344,7 +353,16 @@ def plot_benchmark_results(
         return
 
     if plot_mode == "combined":
-        fig = plt.figure(figsize=config.figure.combined_figsize, constrained_layout=True)
+        # Calculate height based on number of datasets
+        dataset_values = [v for v in df[dataset_label_col].tolist() if pd.notna(v)]
+        n_datasets = len(list(dict.fromkeys(dataset_values)))
+        combined_height = max(
+            config.figure.combined_min_height,
+            n_datasets * config.figure.combined_height_per_dataset
+        )
+        combined_figsize = (config.figure.combined_width, combined_height)
+        
+        fig = plt.figure(figsize=combined_figsize, constrained_layout=True)
         grid = fig.add_gridspec(
             1,
             len(metrics) + 1,
@@ -370,7 +388,7 @@ def plot_benchmark_results(
             # Combined layout: keep panels compact and avoid redundant labels.
             ax.set_title("")
             ax.set_ylabel("")
-            ax.margins(y=0)
+            ax.margins(y=config.figure.combined_y_margin)
             if spec.get("metric") == "model_size":
                 # In combined view the right model-size panel does not need dataset ticks/label.
                 ax.set_ylabel("")
