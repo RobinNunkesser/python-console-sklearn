@@ -273,7 +273,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--random-state", type=int, default=42)
     parser.add_argument("--learning-iterations", type=int, default=100000)
     parser.add_argument("--population-size", type=int, default=1000)
-    parser.add_argument("--plot-mode", default="combined", choices=["combined", "separate"])
+    parser.add_argument("--plot-mode", default="combined", choices=["combined", "separate", "by_dataset"])
     parser.add_argument("--plot-style", default="dots", choices=["dots", "bars"])
     parser.add_argument("--error-bars", default="std", choices=["none", "std", "ci95"])
     parser.add_argument("--output-dir", default="benchmarks/outputs/multiplexer")

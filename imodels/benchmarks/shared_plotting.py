@@ -28,10 +28,15 @@ class FontConfig:
 
 @dataclass(frozen=True)
 class FigureConfig:
-    combined_figsize: tuple[float, float] = (10.5, 8.8)
+    # Narrower and taller combined figure for larger per-dataset bands.
+    combined_figsize: tuple[float, float] = (8.4, 11.6)
     separate_figsize: tuple[float, float] = (8.0, 5.4)
-    combined_width_ratios: tuple[float, float] = (1.0, 0.24)
-    combined_height_ratio: float = 1.0
+    by_dataset_width_per_metric: float = 4.8
+    by_dataset_legend_width: float = 2.8
+    by_dataset_row_height: float = 2.4
+    by_dataset_min_height: float = 5.8
+    combined_legend_height_ratio: float = 0.24
+    combined_plot_height_ratio: float = 1.0
     separate_height_ratios: tuple[float, float] = (0.2, 1.0)
 
 
@@ -94,16 +99,16 @@ ALGORITHM_SHORT_NAMES: dict[str, str] = {
     "DecisionTreeClassifier": "DT",
     "FIGSClassifier": "FIGS",
     "GreedyRuleListClassifier": "GRL",
-    "GreedyTreeClassifier": "GT",
-    "HSTreeClassifier": "HST",
+    "GreedyTreeClassifier": "CART",
+    "HSTreeClassifier": "HS",
     "OneRClassifier": "OneR",
-    "SlipperClassifier": "SLIP",
+    "SlipperClassifier": "Slipper",
     "TaoTreeClassifier": "Tao",
     # ExSTraCS variants
     "ExSTraCS": "ExS",
     "ExSTraCS_FU1": "ExS-F1",
     "ExSTraCS_FU2": "ExS-F2",
-    "ExSTraCS_QRF": "ExS-QRF",
+    "ExSTraCS_QRF": "ExSTraCS",
 }
 
 
@@ -292,16 +297,65 @@ def plot_benchmark_results(
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    if plot_mode == "by_dataset":
+        dataset_values = [v for v in df[dataset_label_col].tolist() if pd.notna(v)]
+        datasets = list(dict.fromkeys(dataset_values))
+        if not datasets:
+            return
+
+        n_metrics = len(metrics)
+        if n_metrics == 0:
+            raise ValueError("metrics must not be empty for by_dataset mode")
+
+        fig_width = config.figure.by_dataset_width_per_metric * n_metrics + config.figure.by_dataset_legend_width
+        fig_height = max(config.figure.by_dataset_min_height, config.figure.by_dataset_row_height * len(datasets))
+        fig = plt.figure(figsize=(fig_width, fig_height), constrained_layout=True)
+        grid = fig.add_gridspec(len(datasets), n_metrics + 1, width_ratios=[1.0] * n_metrics + [0.32])
+        legend_ax = fig.add_subplot(grid[:, n_metrics])
+
+        first_data_ax: plt.Axes | None = None
+        for row_idx, dataset in enumerate(datasets):
+            subset = df[df[dataset_label_col] == dataset]
+            for col_idx, spec in enumerate(metrics):
+                ax = fig.add_subplot(grid[row_idx, col_idx])
+                if first_data_ax is None:
+                    first_data_ax = ax
+                label = spec["label"] if error_bars == "none" else f"{spec['label']} (mean +/- {error_bars})"
+                panel_title = f"{dataset} - {spec['label']}"
+                plot_metric_panel(
+                    subset,
+                    dataset_label_col=dataset_label_col,
+                    metric=spec["metric"],
+                    ax=ax,
+                    title=panel_title,
+                    xlabel=label,
+                    error_bars=error_bars,
+                    plot_style=plot_style,
+                    xscale=spec.get("xscale", "linear"),
+                    config=config,
+                )
+
+        if first_data_ax is not None:
+            add_figure_legend(legend_ax, first_data_ax, side=True, config=config)
+        save_figure_outputs(fig, output_dir / f"{output_basename_prefix}_by_dataset")
+        if no_show:
+            plt.close(fig)
+        else:
+            plt.show()
+        return
+
     if plot_mode == "combined":
         fig = plt.figure(figsize=config.figure.combined_figsize, constrained_layout=True)
         grid = fig.add_gridspec(
-            len(metrics),
             2,
-            width_ratios=list(config.figure.combined_width_ratios),
-            height_ratios=[config.figure.combined_height_ratio] * len(metrics),
+            len(metrics),
+            height_ratios=[
+                config.figure.combined_legend_height_ratio,
+                config.figure.combined_plot_height_ratio,
+            ],
         )
-        axes = [fig.add_subplot(grid[idx, 0]) for idx in range(len(metrics))]
-        legend_ax = fig.add_subplot(grid[:, 1])
+        legend_ax = fig.add_subplot(grid[0, :])
+        axes = [fig.add_subplot(grid[1, idx]) for idx in range(len(metrics))]
 
         for ax, spec in zip(axes, metrics):
             label = spec["label"] if error_bars == "none" else f"{spec['label']} (mean +/- {error_bars})"
@@ -317,8 +371,11 @@ def plot_benchmark_results(
                 xscale=spec.get("xscale", "linear"),
                 config=config,
             )
+            if spec.get("metric") == "model_size":
+                # In combined view the dataset axis title is redundant on the right panel.
+                ax.set_ylabel("")
 
-        add_figure_legend(legend_ax, axes[0], side=True, config=config)
+        add_figure_legend(legend_ax, axes[0], side=False, config=config)
         save_figure_outputs(fig, output_dir / f"{output_basename_prefix}_combined")
         if no_show:
             plt.close(fig)

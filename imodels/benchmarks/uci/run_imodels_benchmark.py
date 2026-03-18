@@ -760,8 +760,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--plot-mode",
         default="combined",
-        choices=["combined", "separate"],
-        help="combined = one figure with two panels, separate = two figures",
+        choices=["combined", "separate", "by_dataset"],
+        help="combined = one figure, separate = one figure per metric, by_dataset = one row per dataset",
     )
     parser.add_argument("--plot-style", default="dots", choices=["dots", "bars"])
     parser.add_argument("--random-state", type=int, default=42)

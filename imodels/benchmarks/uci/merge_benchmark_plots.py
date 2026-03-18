@@ -111,7 +111,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "benchmarks/outputs/exstracs/exstracs_plot_data.csv)"
         ),
     )
-    parser.add_argument("--plot-mode", default="combined", choices=["combined", "separate"])
+    parser.add_argument("--plot-mode", default="combined", choices=["combined", "separate", "by_dataset"])
     parser.add_argument("--plot-style", default="dots", choices=["dots", "bars"])
     parser.add_argument("--error-bars", default="std", choices=["none", "std", "ci95"])
     parser.add_argument("--output-dir", default="benchmarks/outputs/merged")
