@@ -14,10 +14,15 @@ imodels/
 │  │  ├─ run_imodels_benchmark.py
 │  │  ├─ run_exstracs_benchmark.py
 │  │  └─ merge_benchmark_plots.py
+│  ├─ multiplexer/
+│  │  ├─ run_multiplexer_benchmark.py
+│  │  ├─ merge_benchmark_plots.py
+│  │  └─ multiplexer_plotting.py
 │  └─ outputs/
 │     ├─ imodels/
 │     ├─ exstracs/
-│     └─ merged/
+│     ├─ merged/
+│     └─ multiplexer/
 ├─ experiments/
 │  └─ synthetic_rules/
 │     ├─ compare_three_rule_models.py
@@ -44,11 +49,20 @@ imodels-Benchmark:
 python benchmarks/uci/run_imodels_benchmark.py --no-show
 ```
 
+Der UCI-Runner nutzt denselben Shared-Plotrenderer wie die Merge-Skripte und unterstützt ebenfalls:
+
+- `--plot-style dots|bars`
+- `--plot-mode combined|separate`
+- PNG + PDF Export
+
 ExSTraCS-Benchmark:
 
 ```bash
 python benchmarks/uci/run_exstracs_benchmark.py --no-show
 ```
+
+Hinweis: Dieser Schritt schreibt nur CSV-Dateien. Die eigentliche Darstellung läuft danach über
+`benchmarks/uci/merge_benchmark_plots.py`, also bereits über den gemeinsamen Shared-Plotrenderer.
 
 Merged Plot aus beiden Plot-CSV-Dateien:
 
@@ -56,13 +70,37 @@ Merged Plot aus beiden Plot-CSV-Dateien:
 python benchmarks/uci/merge_benchmark_plots.py --no-show
 ```
 
+Multiplexer-Benchmark (lokale CSVs in `data/csv/Real`):
+
+```bash
+python benchmarks/multiplexer/run_multiplexer_benchmark.py --no-show
+```
+
+Multiplexer-Plot aus mehreren `multiplexer_plot_data.csv`-Dateien zusammenführen:
+
+```bash
+python benchmarks/multiplexer/merge_benchmark_plots.py \
+  --input-csvs "run_a/multiplexer_plot_data.csv,run_b/multiplexer_plot_data.csv" \
+  --no-show
+```
+
+Wichtige Unterschiede beim Multiplexer-Benchmark:
+
+- kein Train/Test-Split (Training und Evaluation auf dem vollen Datensatz)
+- Metrik `accuracy` statt `f1`
+- gleicher Plot-Look wie beim UCI-Plot (`--plot-style dots|bars`, `--plot-mode combined|separate`)
+- eigener Plot-Output: je nach `--plot-mode` entweder `multiplexer_combined.{png,pdf}` oder separate Dateien für `accuracy` und `model_size`
+- eigener Merge-Plot-Output: je nach `--plot-mode` entweder `merged_multiplexer_combined.{png,pdf}` oder separate Dateien für `accuracy` und `model_size`
+
 ## Standard-Outputpfade
 
 - `benchmarks/uci/run_imodels_benchmark.py` -> `benchmarks/outputs/imodels/`
 - `benchmarks/uci/run_exstracs_benchmark.py` -> `benchmarks/outputs/exstracs/`
 - `benchmarks/uci/merge_benchmark_plots.py` -> `benchmarks/outputs/merged/`
+- `benchmarks/multiplexer/run_multiplexer_benchmark.py` -> `benchmarks/outputs/multiplexer/`
+- `benchmarks/multiplexer/merge_benchmark_plots.py` -> `benchmarks/outputs/multiplexer/merged/`
 
-Der Merge-Plot exportiert immer PNG + PDF.
+Die Plot-Skripte exportieren PNG + PDF; bei `combined` entsteht eine Datei pro Benchmark, bei `separate` je eine Datei pro Metrik.
 
 ## Paper-orientierte Plot-Eigenschaften
 
@@ -79,6 +117,8 @@ Die bisherigen Dateinamen bleiben als Wrapper erhalten:
 - `uciml.py` -> `benchmarks/uci/run_imodels_benchmark.py`
 - `exstracs_benchmark.py` -> `benchmarks/uci/run_exstracs_benchmark.py`
 - `plot_uciml_csvs.py` -> `benchmarks/uci/merge_benchmark_plots.py`
+- `multiplexer_benchmark.py` -> `benchmarks/multiplexer/run_multiplexer_benchmark.py`
+- `plot_multiplexer_csvs.py` -> `benchmarks/multiplexer/merge_benchmark_plots.py`
 
 So funktionieren alte Befehle weiterhin, aber neue Befehle sollten die Pfade unter `benchmarks/uci/` verwenden.
 

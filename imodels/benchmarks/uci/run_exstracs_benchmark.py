@@ -1,16 +1,16 @@
 """Benchmark ExSTraCS (scikit-ExSTraCS) on UCI-ML-Repo datasets.
 
-Reuses dataset loading, aggregation, and CSV export from run_imodels_benchmark.py.
-Results can be combined with imodels results via merge_benchmark_plots.py:
+This command exports CSV results only. Rendering uses the shared plotting stack
+via `merge_benchmark_plots.py`, which combines ExSTraCS plot-data CSVs with the
+imodels benchmark outputs.
 
-    python benchmarks/uci/run_exstracs_benchmark.py --no-show
+    python benchmarks/uci/run_exstracs_benchmark.py
     python benchmarks/uci/merge_benchmark_plots.py --no-show
 """
 
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +25,6 @@ from skExSTraCS import ExSTraCS
 # Reuse shared utilities from the imodels benchmark script — no duplication.
 from run_imodels_benchmark import (
     DEFAULT_DATASET_OPTIONS,
-    PLOT_EXPORT_COLUMNS,
     DatasetBundle,
     aggregate_results,
     build_dataset_configs,
@@ -298,6 +297,7 @@ def run_benchmark(
     csv_plot = output_dir / "exstracs_plot_data.csv"
     plot_export_df.to_csv(csv_plot, index=False)
     print(f"CSV saved (plot data): {csv_plot}")
+    print("No figures are rendered in this step; use merge_benchmark_plots.py for plotting.")
 
     return results_df, agg_df
 
@@ -332,7 +332,10 @@ def parse_dataset_short_names(raw: str) -> tuple[dict[int, str], dict[str, str]]
 def build_arg_parser() -> argparse.ArgumentParser:
     default_ids = ",".join(str(k) for k in sorted(DEFAULT_DATASET_OPTIONS))
     parser = argparse.ArgumentParser(
-        description="ExSTraCS benchmark — connect results to imodels via merge_benchmark_plots.py"
+        description=(
+            "ExSTraCS benchmark (CSV export only) — render plots afterwards via "
+            "merge_benchmark_plots.py"
+        )
     )
     parser.add_argument(
         "--dataset-ids", default=default_ids,
@@ -358,8 +361,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Optional short plot labels, e.g. 17:BreastCancer,heart_disease:Heart",
     )
     parser.add_argument("--output-dir", default="benchmarks/outputs/exstracs")
-    parser.add_argument("--no-show", action="store_true",
-                        help="Do not show matplotlib windows (save files only)")
+    parser.add_argument(
+        "--no-show",
+        action="store_true",
+        help="Kept for CLI compatibility; this command does not render plots itself.",
+    )
     return parser
 
 

@@ -7,18 +7,15 @@ Expected input schema is produced by `run_imodels_benchmark.py` as
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
-from typing import Any, cast
 
-import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 
-TITLE_FONTSIZE = 14
-AXIS_LABEL_FONTSIZE = 12
-TICK_FONTSIZE = 10
-LEGEND_FONTSIZE = 10
-LEGEND_TITLE_FONTSIZE = 11
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from benchmarks.shared_plotting import UCI_METRICS, plot_benchmark_results
 
 REQUIRED_COLUMNS = {
     "dataset_id",
@@ -29,61 +26,9 @@ REQUIRED_COLUMNS = {
 }
 
 
-def add_figure_legend(legend_ax: plt.Axes, source_ax: plt.Axes, *, side: bool = False) -> None:
-    handles, labels = source_ax.get_legend_handles_labels()
-    unique_entries: dict[str, Any] = {}
-    for handle, label in zip(handles, labels):
-        if label and not label.startswith("_") and label not in unique_entries:
-            unique_entries[label] = handle
-
-    legend_ax.axis("off")
-    if not unique_entries:
-        return
-
-    ncol = 1 if side else min(len(unique_entries), 4)
-    legend_ax.legend(
-        unique_entries.values(),
-        unique_entries.keys(),
-        loc="center left" if side else "center",
-        ncol=ncol,
-        frameon=False,
-        title="Algorithm",
-        fontsize=LEGEND_FONTSIZE,
-        title_fontsize=LEGEND_TITLE_FONTSIZE,
-        columnspacing=1.2,
-        handletextpad=0.6,
-    )
-
-
-def add_dataset_background_bands(ax: plt.Axes) -> None:
-    ticks = sorted({float(tick) for tick in ax.get_yticks()})
-    if not ticks:
-        return
-
-    if len(ticks) == 1:
-        bounds = [ticks[0] - 0.5, ticks[0] + 0.5]
-    else:
-        midpoints = [(left + right) / 2 for left, right in zip(ticks, ticks[1:])]
-        first_half_step = (ticks[1] - ticks[0]) / 2
-        last_half_step = (ticks[-1] - ticks[-2]) / 2
-        bounds = [ticks[0] - first_half_step, *midpoints, ticks[-1] + last_half_step]
-
-    for idx, (lower, upper) in enumerate(zip(bounds, bounds[1:])):
-        if idx % 2 == 0:
-            ax.axhspan(lower, upper, facecolor="0.96", edgecolor="none", zorder=-1)
-
-
 def parse_csv_list(raw: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
-
-def save_figure_outputs(fig: plt.Figure, output_base_path: Path) -> None:
-    png_path = output_base_path.with_suffix(".png")
-    pdf_path = output_base_path.with_suffix(".pdf")
-    fig.savefig(png_path, dpi=150)
-    fig.savefig(pdf_path)
-    print(f"Figure saved: {png_path}")
-    print(f"Figure saved: {pdf_path}")
 
 
 def load_and_merge_plot_data(input_paths: list[Path]) -> pd.DataFrame:
@@ -131,96 +76,6 @@ def load_and_merge_plot_data(input_paths: list[Path]) -> pd.DataFrame:
     return merged
 
 
-def plot_metric(
-    df: pd.DataFrame,
-    metric: str,
-    ax: plt.Axes,
-    title: str,
-    ylabel: str,
-    error_bars: str,
-    plot_style: str,
-    xscale: str = "linear",
-) -> None:
-    mean_col = f"{metric}_mean"
-    if mean_col not in df.columns:
-        raise ValueError(f"Missing required column for plotting: {mean_col}")
-
-    pivot = df.pivot(index="plot_dataset", columns="algorithm", values=mean_col)
-
-    err_data = None
-    if error_bars != "none":
-        err_col = f"{metric}_{error_bars}"
-        if err_col in df.columns:
-            err_data = df.pivot(index="plot_dataset", columns="algorithm", values=err_col).reindex_like(pivot)
-            if xscale == "log":
-                # On a log scale, mean - err must stay > 0.
-                # Clip each error so it never reaches or exceeds the mean value.
-                err_data = err_data.clip(upper=pivot * 0.9999)
-
-    if plot_style == "bars":
-        kwargs: dict[str, Any] = {"kind": "barh", "ax": ax, "legend": False}
-        if err_data is not None:
-            # barh: values are on the x-axis, so use xerr (not yerr).
-            kwargs["xerr"] = err_data
-            kwargs["capsize"] = 4
-
-        pivot.plot(**kwargs)
-    elif plot_style == "dots":
-        datasets = list(pivot.index)
-        algorithms = list(pivot.columns)
-        y_base = np.arange(len(datasets), dtype=float)
-
-        if len(algorithms) <= 1:
-            offsets = np.array([0.0])
-        else:
-            offsets = np.linspace(-0.3, 0.3, num=len(algorithms))
-
-        colors = plt.rcParams.get("axes.prop_cycle", None)
-        palette = colors.by_key().get("color", []) if colors is not None else []
-
-        for idx, algorithm in enumerate(algorithms):
-            color = palette[idx % len(palette)] if palette else None
-            x = pivot[algorithm].to_numpy(dtype=float)
-            y = y_base + offsets[idx]
-            mask = ~np.isnan(x)
-
-            if not mask.any():
-                continue
-
-            if err_data is not None and algorithm in err_data.columns:
-                err_frame = cast(pd.DataFrame, err_data)
-                err = err_frame[algorithm].to_numpy(dtype=float)
-                err = np.nan_to_num(err, nan=0.0)
-                ax.errorbar(
-                    x[mask],
-                    y[mask],
-                    xerr=err[mask],
-                    fmt="o",
-                    capsize=4,
-                    markersize=5,
-                    elinewidth=1.2,
-                    linewidth=1.2,
-                    color=color,
-                    label=algorithm,
-                )
-            else:
-                ax.scatter(x[mask], y[mask], s=36, color=color, label=algorithm)
-
-        ax.set_yticks(y_base, labels=datasets)
-        ax.invert_yaxis()
-    else:
-        raise ValueError(f"Unknown plot_style: {plot_style}")
-
-    ax.set_xscale(xscale)
-    ax.set_title(title, fontsize=TITLE_FONTSIZE)
-    ax.set_xlabel(ylabel, fontsize=AXIS_LABEL_FONTSIZE)
-    ax.set_ylabel("Dataset", fontsize=AXIS_LABEL_FONTSIZE)
-    ax.tick_params(axis="both", labelsize=TICK_FONTSIZE)
-    ax.set_axisbelow(True)
-    ax.grid(axis="x", alpha=0.3)
-    add_dataset_background_bands(ax)
-
-
 def plot_results(
     df: pd.DataFrame,
     output_dir: Path,
@@ -229,61 +84,17 @@ def plot_results(
     plot_style: str,
     no_show: bool,
 ) -> None:
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    if plot_mode == "combined":
-        fig = plt.figure(figsize=(10.5, 8.8), constrained_layout=True)
-        grid = fig.add_gridspec(2, 2, width_ratios=[1, 0.24], height_ratios=[1, 1])
-        axes = [fig.add_subplot(grid[0, 0]), fig.add_subplot(grid[1, 0])]
-        legend_ax = fig.add_subplot(grid[:, 1])
-        f1_ylabel = "F1" if error_bars == "none" else f"F1 (mean +/- {error_bars})"
-        size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
-        plot_metric(df, "f1", axes[0], "F1 by Dataset and Algorithm", f1_ylabel, error_bars, plot_style)
-        plot_metric(
-            df,
-            "model_size",
-            axes[1],
-            "Model Size by Dataset and Algorithm",
-            size_ylabel,
-            error_bars,
-            plot_style,
-            xscale="log",
-        )
-        add_figure_legend(legend_ax, axes[0], side=True)
-        save_figure_outputs(fig, output_dir / "merged_ucimodels_combined")
-        if no_show:
-            plt.close(fig)
-        else:
-            plt.show()
-        return
-
-    if plot_mode == "separate":
-        fig_f1 = plt.figure(figsize=(8, 5.4), constrained_layout=True)
-        grid_f1 = fig_f1.add_gridspec(2, 1, height_ratios=[0.2, 1])
-        legend_ax_f1 = fig_f1.add_subplot(grid_f1[0, 0])
-        ax_f1 = fig_f1.add_subplot(grid_f1[1, 0])
-        f1_ylabel = "F1" if error_bars == "none" else f"F1 (mean +/- {error_bars})"
-        plot_metric(df, "f1", ax_f1, "F1 by Dataset and Algorithm", f1_ylabel, error_bars, plot_style)
-        add_figure_legend(legend_ax_f1, ax_f1)
-        save_figure_outputs(fig_f1, output_dir / "merged_ucimodels_f1")
-
-        fig_size = plt.figure(figsize=(8, 5.4), constrained_layout=True)
-        grid_size = fig_size.add_gridspec(2, 1, height_ratios=[0.2, 1])
-        legend_ax_size = fig_size.add_subplot(grid_size[0, 0])
-        ax_size = fig_size.add_subplot(grid_size[1, 0])
-        size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
-        plot_metric(df, "model_size", ax_size, "Model Size", size_ylabel, error_bars, plot_style, xscale="log")
-        add_figure_legend(legend_ax_size, ax_size)
-        save_figure_outputs(fig_size, output_dir / "merged_ucimodels_model_size")
-
-        if no_show:
-            plt.close(fig_f1)
-            plt.close(fig_size)
-        else:
-            plt.show()
-        return
-
-    raise ValueError(f"Unknown plot_mode: {plot_mode}")
+    plot_benchmark_results(
+        df,
+        dataset_label_col="plot_dataset",
+        metrics=UCI_METRICS,
+        output_dir=output_dir,
+        output_basename_prefix="merged_ucimodels",
+        plot_mode=plot_mode,
+        error_bars=error_bars,
+        plot_style=plot_style,
+        no_show=no_show,
+    )
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

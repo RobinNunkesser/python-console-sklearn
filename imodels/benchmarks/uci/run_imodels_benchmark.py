@@ -11,11 +11,11 @@ import argparse
 import inspect
 import itertools
 import math
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-import matplotlib.pyplot as plt
 import pandas as pd
 from imodels import (
     C45TreeClassifier,
@@ -35,6 +35,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder
 from ucimlrepo import fetch_ucirepo
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from benchmarks.shared_plotting import UCI_METRICS, plot_benchmark_results
 
 
 ALGORITHM_REGISTRY: dict[str, Callable[..., Any]] = {
@@ -428,88 +433,28 @@ def build_dataset_configs(dataset_ids: list[int]) -> list[DatasetConfig]:
     return configs
 
 
-def plot_metric(
-    results_df: pd.DataFrame,
-    metric: str,
-    ax: plt.Axes,
-    title: str,
-    ylabel: str,
-    error_bars: str = "none",
-) -> None:
-    mean_col = f"{metric}_mean" if f"{metric}_mean" in results_df.columns else metric
-    dataset_label_col = "plot_dataset" if "plot_dataset" in results_df.columns else "dataset"
-    # Horizontal bars: datasets on y-axis, metric values on x-axis, algorithms grouped.
-    pivot = results_df.pivot(index=dataset_label_col, columns="algorithm", values=mean_col)
-
-    yerr = None
-    if error_bars != "none":
-        err_col = f"{metric}_{error_bars}"
-        if err_col in results_df.columns:
-            yerr = results_df.pivot(index=dataset_label_col, columns="algorithm", values=err_col).reindex_like(pivot)
-
-    plot_kwargs: dict[str, Any] = {"kind": "barh", "ax": ax}
-    if yerr is not None:
-        plot_kwargs["yerr"] = yerr
-        plot_kwargs["capsize"] = 4
-
-    pivot.plot(**plot_kwargs)
-    ax.set_title(title)
-    ax.set_xlabel(ylabel)
-    ax.set_ylabel("Dataset")
-    ax.grid(axis="x", alpha=0.3)
-    ax.legend(title="Algorithm")
-
-
 def plot_results(
     results_df: pd.DataFrame,
     output_dir: Path,
     plot_mode: str,
     no_show: bool,
     error_bars: str,
+    plot_style: str,
 ) -> None:
     if results_df.empty:
         return
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    if plot_mode == "combined":
-        fig, axes = plt.subplots(1, 2, figsize=(14, 5), constrained_layout=True)
-        f1_ylabel = "F1" if error_bars == "none" else f"F1 (mean +/- {error_bars})"
-        size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
-        plot_metric(results_df, "f1", axes[0], "F1 by Dataset and Algorithm", f1_ylabel, error_bars)
-        plot_metric(results_df, "model_size", axes[1], "Model Size by Dataset and Algorithm", size_ylabel, error_bars)
-        combined_path = output_dir / "uci_imodels_combined.png"
-        fig.savefig(combined_path, dpi=150)
-        print(f"Figure saved: {combined_path}")
-        if no_show:
-            plt.close(fig)
-        else:
-            plt.show()
-        return
-
-    if plot_mode == "separate":
-        fig_f1, ax_f1 = plt.subplots(figsize=(8, 5), constrained_layout=True)
-        f1_ylabel = "F1" if error_bars == "none" else f"F1 (mean +/- {error_bars})"
-        plot_metric(results_df, "f1", ax_f1, "F1 by Dataset and Algorithm", f1_ylabel, error_bars)
-        f1_path = output_dir / "uci_imodels_f1.png"
-        fig_f1.savefig(f1_path, dpi=150)
-        print(f"Figure saved: {f1_path}")
-
-        fig_size, ax_size = plt.subplots(figsize=(8, 5), constrained_layout=True)
-        size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
-        plot_metric(results_df, "model_size", ax_size, "Model Size", size_ylabel, error_bars)
-        size_path = output_dir / "uci_imodels_model_size.png"
-        fig_size.savefig(size_path, dpi=150)
-        print(f"Figure saved: {size_path}")
-
-        if no_show:
-            plt.close(fig_f1)
-            plt.close(fig_size)
-        else:
-            plt.show()
-        return
-
-    raise ValueError(f"Unknown plot_mode: {plot_mode}")
+    plot_benchmark_results(
+        results_df,
+        dataset_label_col="plot_dataset" if "plot_dataset" in results_df.columns else "dataset",
+        metrics=UCI_METRICS,
+        output_dir=output_dir,
+        output_basename_prefix="uci_imodels",
+        plot_mode=plot_mode,
+        error_bars=error_bars,
+        plot_style=plot_style,
+        no_show=no_show,
+    )
 
 
 def aggregate_results(results_df: pd.DataFrame) -> pd.DataFrame:
@@ -683,6 +628,7 @@ def run_benchmark(
     dataset_short_names_by_name: dict[str, str],
     output_dir: Path,
     plot_mode: str,
+    plot_style: str,
     no_show: bool,
     error_bars: str,
     significance_check: bool,
@@ -788,7 +734,14 @@ def run_benchmark(
         significance_df.to_csv(csv_sig_path, index=False)
         print(f"CSV saved (significance): {csv_sig_path}")
 
-    plot_results(agg_df, output_dir=output_dir, plot_mode=plot_mode, no_show=no_show, error_bars=error_bars)
+    plot_results(
+        agg_df,
+        output_dir=output_dir,
+        plot_mode=plot_mode,
+        no_show=no_show,
+        error_bars=error_bars,
+        plot_style=plot_style,
+    )
     return results_df, agg_df, significance_df
 
 
@@ -810,6 +763,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         choices=["combined", "separate"],
         help="combined = one figure with two panels, separate = two figures",
     )
+    parser.add_argument("--plot-style", default="dots", choices=["dots", "bars"])
     parser.add_argument("--random-state", type=int, default=42)
     parser.add_argument(
         "--n-runs",
@@ -871,6 +825,7 @@ def main() -> None:
         dataset_short_names_by_name=dataset_short_names_by_name,
         output_dir=Path(args.output_dir),
         plot_mode=args.plot_mode,
+        plot_style=args.plot_style,
         no_show=args.no_show,
         error_bars=args.error_bars,
         significance_check=args.significance_check,

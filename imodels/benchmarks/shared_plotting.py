@@ -1,0 +1,319 @@
+"""Shared plotting helpers for benchmark result CSVs."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, cast
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+TITLE_FONTSIZE = 14
+AXIS_LABEL_FONTSIZE = 12
+TICK_FONTSIZE = 10
+LEGEND_FONTSIZE = 10
+LEGEND_TITLE_FONTSIZE = 11
+
+
+@dataclass(frozen=True)
+class FontConfig:
+    title: int = TITLE_FONTSIZE
+    axis_label: int = AXIS_LABEL_FONTSIZE
+    tick: int = TICK_FONTSIZE
+    legend: int = LEGEND_FONTSIZE
+    legend_title: int = LEGEND_TITLE_FONTSIZE
+
+
+@dataclass(frozen=True)
+class FigureConfig:
+    combined_figsize: tuple[float, float] = (10.5, 8.8)
+    separate_figsize: tuple[float, float] = (8.0, 5.4)
+    combined_width_ratios: tuple[float, float] = (1.0, 0.24)
+    combined_height_ratio: float = 1.0
+    separate_height_ratios: tuple[float, float] = (0.2, 1.0)
+
+
+@dataclass(frozen=True)
+class MarkerConfig:
+    dot_offsets_min: float = -0.3
+    dot_offsets_max: float = 0.3
+    scatter_size: float = 36.0
+    errorbar_marker_size: float = 5.0
+    errorbar_capsize: float = 4.0
+    errorbar_linewidth: float = 1.2
+    log_clip_fraction: float = 0.9999
+
+
+@dataclass(frozen=True)
+class LegendConfig:
+    side_ncol: int = 1
+    max_inline_ncol: int = 4
+    column_spacing: float = 1.2
+    handle_text_pad: float = 0.6
+
+
+@dataclass(frozen=True)
+class StyleConfig:
+    dataset_band_facecolor: str = "0.96"
+    grid_alpha: float = 0.3
+
+
+@dataclass(frozen=True)
+class PlotConfig:
+    fonts: FontConfig = field(default_factory=FontConfig)
+    figure: FigureConfig = field(default_factory=FigureConfig)
+    markers: MarkerConfig = field(default_factory=MarkerConfig)
+    legend: LegendConfig = field(default_factory=LegendConfig)
+    style: StyleConfig = field(default_factory=StyleConfig)
+
+
+DEFAULT_PLOT_CONFIG = PlotConfig()
+
+UCI_METRICS: list[dict[str, str]] = [
+    {
+        "metric": "f1",
+        "label": "F1",
+        "title": "F1 by Dataset and Algorithm",
+        "separate_title": "F1 by Dataset and Algorithm",
+        "xscale": "linear",
+    },
+    {
+        "metric": "model_size",
+        "label": "Model Size",
+        "title": "Model Size by Dataset and Algorithm",
+        "separate_title": "Model Size",
+        "xscale": "log",
+    },
+]
+
+
+def add_figure_legend(
+    legend_ax: plt.Axes,
+    source_ax: plt.Axes,
+    *,
+    side: bool = False,
+    config: PlotConfig = DEFAULT_PLOT_CONFIG,
+) -> None:
+    handles, labels = source_ax.get_legend_handles_labels()
+    unique_entries: dict[str, Any] = {}
+    for handle, label in zip(handles, labels):
+        if label and not label.startswith("_") and label not in unique_entries:
+            unique_entries[label] = handle
+
+    legend_ax.axis("off")
+    if not unique_entries:
+        return
+
+    ncol = config.legend.side_ncol if side else min(len(unique_entries), config.legend.max_inline_ncol)
+    legend_ax.legend(
+        unique_entries.values(),
+        unique_entries.keys(),
+        loc="center left" if side else "center",
+        ncol=ncol,
+        frameon=False,
+        title="Algorithm",
+        fontsize=config.fonts.legend,
+        title_fontsize=config.fonts.legend_title,
+        columnspacing=config.legend.column_spacing,
+        handletextpad=config.legend.handle_text_pad,
+    )
+
+
+def add_dataset_background_bands(ax: plt.Axes, *, config: PlotConfig = DEFAULT_PLOT_CONFIG) -> None:
+    ticks = sorted({float(tick) for tick in ax.get_yticks()})
+    if not ticks:
+        return
+
+    if len(ticks) == 1:
+        bounds = [ticks[0] - 0.5, ticks[0] + 0.5]
+    else:
+        midpoints = [(left + right) / 2 for left, right in zip(ticks, ticks[1:])]
+        first_half_step = (ticks[1] - ticks[0]) / 2
+        last_half_step = (ticks[-1] - ticks[-2]) / 2
+        bounds = [ticks[0] - first_half_step, *midpoints, ticks[-1] + last_half_step]
+
+    for idx, (lower, upper) in enumerate(zip(bounds, bounds[1:])):
+        if idx % 2 == 0:
+            ax.axhspan(lower, upper, facecolor=config.style.dataset_band_facecolor, edgecolor="none", zorder=-1)
+
+
+def save_figure_outputs(fig: plt.Figure, output_base_path: Path) -> None:
+    png_path = output_base_path.with_suffix(".png")
+    pdf_path = output_base_path.with_suffix(".pdf")
+    fig.savefig(png_path, dpi=150)
+    fig.savefig(pdf_path)
+    print(f"Figure saved: {png_path}")
+    print(f"Figure saved: {pdf_path}")
+
+
+def plot_metric_panel(
+    df: pd.DataFrame,
+    *,
+    dataset_label_col: str,
+    metric: str,
+    ax: plt.Axes,
+    title: str,
+    xlabel: str,
+    error_bars: str,
+    plot_style: str,
+    xscale: str = "linear",
+    config: PlotConfig = DEFAULT_PLOT_CONFIG,
+) -> None:
+    mean_col = f"{metric}_mean"
+    if mean_col not in df.columns:
+        raise ValueError(f"Missing required column for plotting: {mean_col}")
+
+    pivot = df.pivot(index=dataset_label_col, columns="algorithm", values=mean_col)
+
+    err_data = None
+    if error_bars != "none":
+        err_col = f"{metric}_{error_bars}"
+        if err_col in df.columns:
+            err_data = df.pivot(index=dataset_label_col, columns="algorithm", values=err_col).reindex_like(pivot)
+            if xscale == "log":
+                err_data = err_data.clip(upper=pivot * config.markers.log_clip_fraction)
+
+    if plot_style == "bars":
+        kwargs: dict[str, Any] = {"kind": "barh", "ax": ax, "legend": False}
+        if err_data is not None:
+            kwargs["xerr"] = err_data
+            kwargs["capsize"] = config.markers.errorbar_capsize
+        pivot.plot(**kwargs)
+    elif plot_style == "dots":
+        datasets = list(pivot.index)
+        algorithms = list(pivot.columns)
+        y_base = np.arange(len(datasets), dtype=float)
+        offsets = (
+            np.array([0.0])
+            if len(algorithms) <= 1
+            else np.linspace(config.markers.dot_offsets_min, config.markers.dot_offsets_max, num=len(algorithms))
+        )
+
+        colors = plt.rcParams.get("axes.prop_cycle", None)
+        palette = colors.by_key().get("color", []) if colors is not None else []
+
+        for idx, algorithm in enumerate(algorithms):
+            color = palette[idx % len(palette)] if palette else None
+            x = pivot[algorithm].to_numpy(dtype=float)
+            y = y_base + offsets[idx]
+            mask = ~np.isnan(x)
+            if not mask.any():
+                continue
+
+            if err_data is not None and algorithm in err_data.columns:
+                err_frame = cast(pd.DataFrame, err_data)
+                err = np.nan_to_num(err_frame[algorithm].to_numpy(dtype=float), nan=0.0)
+                ax.errorbar(
+                    x[mask],
+                    y[mask],
+                    xerr=err[mask],
+                    fmt="o",
+                    capsize=config.markers.errorbar_capsize,
+                    markersize=config.markers.errorbar_marker_size,
+                    elinewidth=config.markers.errorbar_linewidth,
+                    linewidth=config.markers.errorbar_linewidth,
+                    color=color,
+                    label=algorithm,
+                )
+            else:
+                ax.scatter(x[mask], y[mask], s=config.markers.scatter_size, color=color, label=algorithm)
+
+        ax.set_yticks(y_base, labels=datasets)
+        ax.invert_yaxis()
+    else:
+        raise ValueError(f"Unknown plot_style: {plot_style}")
+
+    ax.set_xscale(xscale)
+    ax.set_title(title, fontsize=config.fonts.title)
+    ax.set_xlabel(xlabel, fontsize=config.fonts.axis_label)
+    ax.set_ylabel("Dataset", fontsize=config.fonts.axis_label)
+    ax.tick_params(axis="both", labelsize=config.fonts.tick)
+    ax.set_axisbelow(True)
+    ax.grid(axis="x", alpha=config.style.grid_alpha)
+    add_dataset_background_bands(ax, config=config)
+
+
+def plot_benchmark_results(
+    df: pd.DataFrame,
+    *,
+    dataset_label_col: str,
+    metrics: list[dict[str, str]],
+    output_dir: Path,
+    output_basename_prefix: str,
+    plot_mode: str,
+    error_bars: str,
+    plot_style: str,
+    no_show: bool,
+    config: PlotConfig = DEFAULT_PLOT_CONFIG,
+) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if plot_mode == "combined":
+        fig = plt.figure(figsize=config.figure.combined_figsize, constrained_layout=True)
+        grid = fig.add_gridspec(
+            len(metrics),
+            2,
+            width_ratios=list(config.figure.combined_width_ratios),
+            height_ratios=[config.figure.combined_height_ratio] * len(metrics),
+        )
+        axes = [fig.add_subplot(grid[idx, 0]) for idx in range(len(metrics))]
+        legend_ax = fig.add_subplot(grid[:, 1])
+
+        for ax, spec in zip(axes, metrics):
+            label = spec["label"] if error_bars == "none" else f"{spec['label']} (mean +/- {error_bars})"
+            plot_metric_panel(
+                df,
+                dataset_label_col=dataset_label_col,
+                metric=spec["metric"],
+                ax=ax,
+                title=spec["title"],
+                xlabel=label,
+                error_bars=error_bars,
+                plot_style=plot_style,
+                xscale=spec.get("xscale", "linear"),
+                config=config,
+            )
+
+        add_figure_legend(legend_ax, axes[0], side=True, config=config)
+        save_figure_outputs(fig, output_dir / f"{output_basename_prefix}_combined")
+        if no_show:
+            plt.close(fig)
+        else:
+            plt.show()
+        return
+
+    if plot_mode == "separate":
+        figures: list[plt.Figure] = []
+        for spec in metrics:
+            fig = plt.figure(figsize=config.figure.separate_figsize, constrained_layout=True)
+            grid = fig.add_gridspec(2, 1, height_ratios=list(config.figure.separate_height_ratios))
+            legend_ax = fig.add_subplot(grid[0, 0])
+            ax = fig.add_subplot(grid[1, 0])
+            label = spec["label"] if error_bars == "none" else f"{spec['label']} (mean +/- {error_bars})"
+            plot_metric_panel(
+                df,
+                dataset_label_col=dataset_label_col,
+                metric=spec["metric"],
+                ax=ax,
+                title=spec["separate_title"],
+                xlabel=label,
+                error_bars=error_bars,
+                plot_style=plot_style,
+                xscale=spec.get("xscale", "linear"),
+                config=config,
+            )
+            add_figure_legend(legend_ax, ax, config=config)
+            save_figure_outputs(fig, output_dir / f"{output_basename_prefix}_{spec['metric']}")
+            figures.append(fig)
+
+        if no_show:
+            for fig in figures:
+                plt.close(fig)
+        else:
+            plt.show()
+        return
+
+    raise ValueError(f"Unknown plot_mode: {plot_mode}")
+
