@@ -22,6 +22,30 @@ REQUIRED_COLUMNS = {
 }
 
 
+def add_figure_legend(legend_ax: plt.Axes, source_ax: plt.Axes) -> None:
+    handles, labels = source_ax.get_legend_handles_labels()
+    unique_entries: dict[str, Any] = {}
+    for handle, label in zip(handles, labels):
+        if label and not label.startswith("_") and label not in unique_entries:
+            unique_entries[label] = handle
+
+    legend_ax.axis("off")
+    if not unique_entries:
+        return
+
+    ncol = min(len(unique_entries), 4)
+    legend_ax.legend(
+        unique_entries.values(),
+        unique_entries.keys(),
+        loc="center",
+        ncol=ncol,
+        frameon=False,
+        title="Algorithm",
+        columnspacing=1.2,
+        handletextpad=0.6,
+    )
+
+
 def add_dataset_background_bands(ax: plt.Axes) -> None:
     ticks = sorted({float(tick) for tick in ax.get_yticks()})
     if not ticks:
@@ -116,7 +140,7 @@ def plot_metric(
                 err_data = err_data.clip(upper=pivot * 0.9999)
 
     if plot_style == "bars":
-        kwargs: dict[str, Any] = {"kind": "barh", "ax": ax}
+        kwargs: dict[str, Any] = {"kind": "barh", "ax": ax, "legend": False}
         if err_data is not None:
             # barh: values are on the x-axis, so use xerr (not yerr).
             kwargs["xerr"] = err_data
@@ -176,7 +200,6 @@ def plot_metric(
     ax.set_axisbelow(True)
     ax.grid(axis="x", alpha=0.3)
     add_dataset_background_bands(ax)
-    ax.legend(title="Algorithm")
 
 
 def plot_results(
@@ -190,7 +213,10 @@ def plot_results(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if plot_mode == "combined":
-        fig, axes = plt.subplots(1, 2, figsize=(14, 5), constrained_layout=True)
+        fig = plt.figure(figsize=(14, 5.8), constrained_layout=True)
+        grid = fig.add_gridspec(2, 2, height_ratios=[0.18, 1])
+        legend_ax = fig.add_subplot(grid[0, :])
+        axes = [fig.add_subplot(grid[1, 0]), fig.add_subplot(grid[1, 1])]
         f1_ylabel = "F1" if error_bars == "none" else f"F1 (mean +/- {error_bars})"
         size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
         plot_metric(df, "f1", axes[0], "F1 by Dataset and Algorithm", f1_ylabel, error_bars, plot_style)
@@ -204,6 +230,7 @@ def plot_results(
             plot_style,
             xscale="log",
         )
+        add_figure_legend(legend_ax, axes[0])
         out = output_dir / "merged_ucimodels_combined.png"
         fig.savefig(out, dpi=150)
         print(f"Figure saved: {out}")
@@ -214,16 +241,24 @@ def plot_results(
         return
 
     if plot_mode == "separate":
-        fig_f1, ax_f1 = plt.subplots(figsize=(8, 5), constrained_layout=True)
+        fig_f1 = plt.figure(figsize=(8, 5.4), constrained_layout=True)
+        grid_f1 = fig_f1.add_gridspec(2, 1, height_ratios=[0.2, 1])
+        legend_ax_f1 = fig_f1.add_subplot(grid_f1[0, 0])
+        ax_f1 = fig_f1.add_subplot(grid_f1[1, 0])
         f1_ylabel = "F1" if error_bars == "none" else f"F1 (mean +/- {error_bars})"
         plot_metric(df, "f1", ax_f1, "F1 by Dataset and Algorithm", f1_ylabel, error_bars, plot_style)
+        add_figure_legend(legend_ax_f1, ax_f1)
         out_f1 = output_dir / "merged_ucimodels_f1.png"
         fig_f1.savefig(out_f1, dpi=150)
         print(f"Figure saved: {out_f1}")
 
-        fig_size, ax_size = plt.subplots(figsize=(8, 5), constrained_layout=True)
+        fig_size = plt.figure(figsize=(8, 5.4), constrained_layout=True)
+        grid_size = fig_size.add_gridspec(2, 1, height_ratios=[0.2, 1])
+        legend_ax_size = fig_size.add_subplot(grid_size[0, 0])
+        ax_size = fig_size.add_subplot(grid_size[1, 0])
         size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
         plot_metric(df, "model_size", ax_size, "Model Size", size_ylabel, error_bars, plot_style, xscale="log")
+        add_figure_legend(legend_ax_size, ax_size)
         out_size = output_dir / "merged_ucimodels_model_size.png"
         fig_size.savefig(out_size, dpi=150)
         print(f"Figure saved: {out_size}")
