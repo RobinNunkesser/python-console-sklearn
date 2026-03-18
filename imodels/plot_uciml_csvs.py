@@ -22,6 +22,16 @@ REQUIRED_COLUMNS = {
 }
 
 
+def add_dataset_separators(ax: plt.Axes) -> None:
+    ticks = sorted({float(tick) for tick in ax.get_yticks()})
+    if len(ticks) < 2:
+        return
+
+    for left, right in zip(ticks, ticks[1:]):
+        midpoint = (left + right) / 2
+        ax.axhline(midpoint, color="0.88", linewidth=0.8, zorder=0)
+
+
 def parse_csv_list(raw: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
@@ -155,7 +165,9 @@ def plot_metric(
     ax.set_title(title)
     ax.set_xlabel(ylabel)
     ax.set_ylabel("Dataset")
+    ax.set_axisbelow(True)
     ax.grid(axis="x", alpha=0.3)
+    add_dataset_separators(ax)
     ax.legend(title="Algorithm")
 
 
