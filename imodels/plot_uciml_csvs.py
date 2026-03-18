@@ -77,6 +77,7 @@ def plot_metric(
     title: str,
     ylabel: str,
     error_bars: str,
+    xscale: str = "linear",
 ) -> None:
     mean_col = f"{metric}_mean"
     if mean_col not in df.columns:
@@ -84,18 +85,24 @@ def plot_metric(
 
     pivot = df.pivot(index="plot_dataset", columns="algorithm", values=mean_col)
 
-    yerr = None
+    err_data = None
     if error_bars != "none":
         err_col = f"{metric}_{error_bars}"
         if err_col in df.columns:
-            yerr = df.pivot(index="plot_dataset", columns="algorithm", values=err_col).reindex_like(pivot)
+            err_data = df.pivot(index="plot_dataset", columns="algorithm", values=err_col).reindex_like(pivot)
+            if xscale == "log":
+                # On a log scale, mean - err must stay > 0.
+                # Clip each error so it never reaches or exceeds the mean value.
+                err_data = err_data.clip(upper=pivot * 0.9999)
 
     kwargs: dict[str, Any] = {"kind": "barh", "ax": ax}
-    if yerr is not None:
-        kwargs["yerr"] = yerr
+    if err_data is not None:
+        # barh: values are on the x-axis, so use xerr (not yerr).
+        kwargs["xerr"] = err_data
         kwargs["capsize"] = 4
 
     pivot.plot(**kwargs)
+    ax.set_xscale(xscale)
     ax.set_title(title)
     ax.set_xlabel(ylabel)
     ax.set_ylabel("Dataset")
@@ -111,7 +118,7 @@ def plot_results(df: pd.DataFrame, output_dir: Path, plot_mode: str, error_bars:
         f1_ylabel = "F1" if error_bars == "none" else f"F1 (mean +/- {error_bars})"
         size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
         plot_metric(df, "f1", axes[0], "F1 by Dataset and Algorithm", f1_ylabel, error_bars)
-        plot_metric(df, "model_size", axes[1], "Model Size by Dataset and Algorithm", size_ylabel, error_bars)
+        plot_metric(df, "model_size", axes[1], "Model Size by Dataset and Algorithm", size_ylabel, error_bars, xscale="log")
         out = output_dir / "merged_ucimodels_combined.png"
         fig.savefig(out, dpi=150)
         print(f"Figure saved: {out}")
@@ -131,7 +138,7 @@ def plot_results(df: pd.DataFrame, output_dir: Path, plot_mode: str, error_bars:
 
         fig_size, ax_size = plt.subplots(figsize=(8, 5), constrained_layout=True)
         size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
-        plot_metric(df, "model_size", ax_size, "Model Size", size_ylabel, error_bars)
+        plot_metric(df, "model_size", ax_size, "Model Size", size_ylabel, error_bars, xscale="log")
         out_size = output_dir / "merged_ucimodels_model_size.png"
         fig_size.savefig(out_size, dpi=150)
         print(f"Figure saved: {out_size}")
@@ -157,7 +164,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--plot-mode", default="combined", choices=["combined", "separate"])
-    parser.add_argument("--error-bars", default="none", choices=["none", "std", "ci95"])
+    parser.add_argument("--error-bars", default="std", choices=["none", "std", "ci95"])
     parser.add_argument("--output-dir", default="results")
     parser.add_argument("--no-show", action="store_true", help="Do not show matplotlib windows (save files only)")
     return parser
