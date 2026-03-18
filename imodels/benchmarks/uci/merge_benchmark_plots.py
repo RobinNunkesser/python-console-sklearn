@@ -1,0 +1,336 @@
+"""Create benchmark plots from one or more exported plot-data CSV files.
+
+Expected input schema is produced by `run_imodels_benchmark.py` as
+`uci_imodels_plot_data.csv`.
+"""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+from typing import Any, cast
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+TITLE_FONTSIZE = 14
+AXIS_LABEL_FONTSIZE = 12
+TICK_FONTSIZE = 10
+LEGEND_FONTSIZE = 10
+LEGEND_TITLE_FONTSIZE = 11
+
+REQUIRED_COLUMNS = {
+    "dataset_id",
+    "dataset",
+    "algorithm",
+    "f1_mean",
+    "model_size_mean",
+}
+
+
+def add_figure_legend(legend_ax: plt.Axes, source_ax: plt.Axes, *, side: bool = False) -> None:
+    handles, labels = source_ax.get_legend_handles_labels()
+    unique_entries: dict[str, Any] = {}
+    for handle, label in zip(handles, labels):
+        if label and not label.startswith("_") and label not in unique_entries:
+            unique_entries[label] = handle
+
+    legend_ax.axis("off")
+    if not unique_entries:
+        return
+
+    ncol = 1 if side else min(len(unique_entries), 4)
+    legend_ax.legend(
+        unique_entries.values(),
+        unique_entries.keys(),
+        loc="center left" if side else "center",
+        ncol=ncol,
+        frameon=False,
+        title="Algorithm",
+        fontsize=LEGEND_FONTSIZE,
+        title_fontsize=LEGEND_TITLE_FONTSIZE,
+        columnspacing=1.2,
+        handletextpad=0.6,
+    )
+
+
+def add_dataset_background_bands(ax: plt.Axes) -> None:
+    ticks = sorted({float(tick) for tick in ax.get_yticks()})
+    if not ticks:
+        return
+
+    if len(ticks) == 1:
+        bounds = [ticks[0] - 0.5, ticks[0] + 0.5]
+    else:
+        midpoints = [(left + right) / 2 for left, right in zip(ticks, ticks[1:])]
+        first_half_step = (ticks[1] - ticks[0]) / 2
+        last_half_step = (ticks[-1] - ticks[-2]) / 2
+        bounds = [ticks[0] - first_half_step, *midpoints, ticks[-1] + last_half_step]
+
+    for idx, (lower, upper) in enumerate(zip(bounds, bounds[1:])):
+        if idx % 2 == 0:
+            ax.axhspan(lower, upper, facecolor="0.96", edgecolor="none", zorder=-1)
+
+
+def parse_csv_list(raw: str) -> list[str]:
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def save_figure_outputs(fig: plt.Figure, output_base_path: Path) -> None:
+    png_path = output_base_path.with_suffix(".png")
+    pdf_path = output_base_path.with_suffix(".pdf")
+    fig.savefig(png_path, dpi=150)
+    fig.savefig(pdf_path)
+    print(f"Figure saved: {png_path}")
+    print(f"Figure saved: {pdf_path}")
+
+
+def load_and_merge_plot_data(input_paths: list[Path]) -> pd.DataFrame:
+    if not input_paths:
+        raise ValueError("No input CSVs provided.")
+
+    frames: list[pd.DataFrame] = []
+
+    for path in input_paths:
+        if not path.exists():
+            raise FileNotFoundError(f"Input CSV not found: {path}")
+
+        df = pd.read_csv(path)
+        missing = REQUIRED_COLUMNS - set(df.columns)
+        if missing:
+            missing_txt = ", ".join(sorted(missing))
+            raise ValueError(f"CSV '{path}' is missing required columns: {missing_txt}")
+
+        if "plot_dataset" not in df.columns:
+            df["plot_dataset"] = df["dataset"]
+
+        df = df.copy()
+        df["source_csv"] = str(path)
+        frames.append(df)
+
+    merged = pd.concat(frames, ignore_index=True)
+
+    # Optional strictness from your workflow: each algorithm should come from one source file only.
+    algo_sources = merged.groupby("algorithm")["source_csv"].nunique()
+    multi_source_algos = algo_sources[algo_sources > 1].index.tolist()
+    if multi_source_algos:
+        raise ValueError(
+            "Algorithms found in multiple CSV files (not allowed for this workflow): "
+            + ", ".join(sorted(multi_source_algos))
+        )
+
+    dup_mask = merged.duplicated(subset=["dataset_id", "algorithm"], keep=False)
+    if dup_mask.any():
+        dup_rows = merged.loc[dup_mask, ["dataset_id", "dataset", "algorithm", "source_csv"]]
+        raise ValueError(
+            "Duplicate dataset+algorithm rows found across inputs:\n"
+            + dup_rows.to_string(index=False)
+        )
+
+    return merged
+
+
+def plot_metric(
+    df: pd.DataFrame,
+    metric: str,
+    ax: plt.Axes,
+    title: str,
+    ylabel: str,
+    error_bars: str,
+    plot_style: str,
+    xscale: str = "linear",
+) -> None:
+    mean_col = f"{metric}_mean"
+    if mean_col not in df.columns:
+        raise ValueError(f"Missing required column for plotting: {mean_col}")
+
+    pivot = df.pivot(index="plot_dataset", columns="algorithm", values=mean_col)
+
+    err_data = None
+    if error_bars != "none":
+        err_col = f"{metric}_{error_bars}"
+        if err_col in df.columns:
+            err_data = df.pivot(index="plot_dataset", columns="algorithm", values=err_col).reindex_like(pivot)
+            if xscale == "log":
+                # On a log scale, mean - err must stay > 0.
+                # Clip each error so it never reaches or exceeds the mean value.
+                err_data = err_data.clip(upper=pivot * 0.9999)
+
+    if plot_style == "bars":
+        kwargs: dict[str, Any] = {"kind": "barh", "ax": ax, "legend": False}
+        if err_data is not None:
+            # barh: values are on the x-axis, so use xerr (not yerr).
+            kwargs["xerr"] = err_data
+            kwargs["capsize"] = 4
+
+        pivot.plot(**kwargs)
+    elif plot_style == "dots":
+        datasets = list(pivot.index)
+        algorithms = list(pivot.columns)
+        y_base = np.arange(len(datasets), dtype=float)
+
+        if len(algorithms) <= 1:
+            offsets = np.array([0.0])
+        else:
+            offsets = np.linspace(-0.3, 0.3, num=len(algorithms))
+
+        colors = plt.rcParams.get("axes.prop_cycle", None)
+        palette = colors.by_key().get("color", []) if colors is not None else []
+
+        for idx, algorithm in enumerate(algorithms):
+            color = palette[idx % len(palette)] if palette else None
+            x = pivot[algorithm].to_numpy(dtype=float)
+            y = y_base + offsets[idx]
+            mask = ~np.isnan(x)
+
+            if not mask.any():
+                continue
+
+            if err_data is not None and algorithm in err_data.columns:
+                err_frame = cast(pd.DataFrame, err_data)
+                err = err_frame[algorithm].to_numpy(dtype=float)
+                err = np.nan_to_num(err, nan=0.0)
+                ax.errorbar(
+                    x[mask],
+                    y[mask],
+                    xerr=err[mask],
+                    fmt="o",
+                    capsize=4,
+                    markersize=5,
+                    elinewidth=1.2,
+                    linewidth=1.2,
+                    color=color,
+                    label=algorithm,
+                )
+            else:
+                ax.scatter(x[mask], y[mask], s=36, color=color, label=algorithm)
+
+        ax.set_yticks(y_base, labels=datasets)
+        ax.invert_yaxis()
+    else:
+        raise ValueError(f"Unknown plot_style: {plot_style}")
+
+    ax.set_xscale(xscale)
+    ax.set_title(title, fontsize=TITLE_FONTSIZE)
+    ax.set_xlabel(ylabel, fontsize=AXIS_LABEL_FONTSIZE)
+    ax.set_ylabel("Dataset", fontsize=AXIS_LABEL_FONTSIZE)
+    ax.tick_params(axis="both", labelsize=TICK_FONTSIZE)
+    ax.set_axisbelow(True)
+    ax.grid(axis="x", alpha=0.3)
+    add_dataset_background_bands(ax)
+
+
+def plot_results(
+    df: pd.DataFrame,
+    output_dir: Path,
+    plot_mode: str,
+    error_bars: str,
+    plot_style: str,
+    no_show: bool,
+) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if plot_mode == "combined":
+        fig = plt.figure(figsize=(10.5, 8.8), constrained_layout=True)
+        grid = fig.add_gridspec(2, 2, width_ratios=[1, 0.24], height_ratios=[1, 1])
+        axes = [fig.add_subplot(grid[0, 0]), fig.add_subplot(grid[1, 0])]
+        legend_ax = fig.add_subplot(grid[:, 1])
+        f1_ylabel = "F1" if error_bars == "none" else f"F1 (mean +/- {error_bars})"
+        size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
+        plot_metric(df, "f1", axes[0], "F1 by Dataset and Algorithm", f1_ylabel, error_bars, plot_style)
+        plot_metric(
+            df,
+            "model_size",
+            axes[1],
+            "Model Size by Dataset and Algorithm",
+            size_ylabel,
+            error_bars,
+            plot_style,
+            xscale="log",
+        )
+        add_figure_legend(legend_ax, axes[0], side=True)
+        save_figure_outputs(fig, output_dir / "merged_ucimodels_combined")
+        if no_show:
+            plt.close(fig)
+        else:
+            plt.show()
+        return
+
+    if plot_mode == "separate":
+        fig_f1 = plt.figure(figsize=(8, 5.4), constrained_layout=True)
+        grid_f1 = fig_f1.add_gridspec(2, 1, height_ratios=[0.2, 1])
+        legend_ax_f1 = fig_f1.add_subplot(grid_f1[0, 0])
+        ax_f1 = fig_f1.add_subplot(grid_f1[1, 0])
+        f1_ylabel = "F1" if error_bars == "none" else f"F1 (mean +/- {error_bars})"
+        plot_metric(df, "f1", ax_f1, "F1 by Dataset and Algorithm", f1_ylabel, error_bars, plot_style)
+        add_figure_legend(legend_ax_f1, ax_f1)
+        save_figure_outputs(fig_f1, output_dir / "merged_ucimodels_f1")
+
+        fig_size = plt.figure(figsize=(8, 5.4), constrained_layout=True)
+        grid_size = fig_size.add_gridspec(2, 1, height_ratios=[0.2, 1])
+        legend_ax_size = fig_size.add_subplot(grid_size[0, 0])
+        ax_size = fig_size.add_subplot(grid_size[1, 0])
+        size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
+        plot_metric(df, "model_size", ax_size, "Model Size", size_ylabel, error_bars, plot_style, xscale="log")
+        add_figure_legend(legend_ax_size, ax_size)
+        save_figure_outputs(fig_size, output_dir / "merged_ucimodels_model_size")
+
+        if no_show:
+            plt.close(fig_f1)
+            plt.close(fig_size)
+        else:
+            plt.show()
+        return
+
+    raise ValueError(f"Unknown plot_mode: {plot_mode}")
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Create merged plots from one or more benchmark plot-data CSVs")
+    parser.add_argument(
+        "--input-csvs",
+        default=(
+            "benchmarks/outputs/imodels/uci_imodels_plot_data.csv,"
+            "benchmarks/outputs/exstracs/exstracs_plot_data.csv"
+        ),
+        help=(
+            "Comma-separated list of input plot-data CSV files "
+            "(default: benchmarks/outputs/imodels/uci_imodels_plot_data.csv,"
+            "benchmarks/outputs/exstracs/exstracs_plot_data.csv)"
+        ),
+    )
+    parser.add_argument("--plot-mode", default="combined", choices=["combined", "separate"])
+    parser.add_argument("--plot-style", default="dots", choices=["dots", "bars"])
+    parser.add_argument("--error-bars", default="std", choices=["none", "std", "ci95"])
+    parser.add_argument("--output-dir", default="benchmarks/outputs/merged")
+    parser.add_argument("--no-show", action="store_true", help="Do not show matplotlib windows (save files only)")
+    return parser
+
+
+def main() -> None:
+    parser = build_arg_parser()
+    args = parser.parse_args()
+
+    input_paths = [Path(p) for p in parse_csv_list(args.input_csvs)]
+    merged_df = load_and_merge_plot_data(input_paths)
+
+    # Useful for debugging/traceability of merged sources.
+    merged_csv_path = Path(args.output_dir) / "merged_plot_data.csv"
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+    merged_df.to_csv(merged_csv_path, index=False)
+    print(f"CSV saved (merged plot data): {merged_csv_path}")
+
+    plot_results(
+        merged_df,
+        output_dir=Path(args.output_dir),
+        plot_mode=args.plot_mode,
+        error_bars=args.error_bars,
+        plot_style=args.plot_style,
+        no_show=args.no_show,
+    )
+
+
+if __name__ == "__main__":
+    main()
+
