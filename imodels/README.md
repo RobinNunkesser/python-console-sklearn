@@ -52,7 +52,7 @@ python benchmarks/uci/run_imodels_benchmark.py --no-show
 Der UCI-Runner nutzt denselben Shared-Plotrenderer wie die Merge-Skripte und unterstützt ebenfalls:
 
 - `--plot-style dots|bars`
-- `--plot-mode combined|separate`
+- `--plot-mode combined|separate|by_dataset` (Default: `combined`)
 - PNG + PDF Export
 
 ExSTraCS-Benchmark:
@@ -88,7 +88,7 @@ Wichtige Unterschiede beim Multiplexer-Benchmark:
 
 - kein Train/Test-Split (Training und Evaluation auf dem vollen Datensatz)
 - Metrik `accuracy` statt `f1`
-- gleicher Plot-Look wie beim UCI-Plot (`--plot-style dots|bars`, `--plot-mode combined|separate`)
+- gleicher Plot-Look wie beim UCI-Plot (`--plot-style dots|bars`, `--plot-mode combined|separate|by_dataset`, Default: `combined`)
 - eigener Plot-Output: je nach `--plot-mode` entweder `multiplexer_combined.{png,pdf}` oder separate Dateien für `accuracy` und `model_size`
 - eigener Merge-Plot-Output: je nach `--plot-mode` entweder `merged_multiplexer_combined.{png,pdf}` oder separate Dateien für `accuracy` und `model_size`
 
@@ -101,6 +101,7 @@ Wichtige Unterschiede beim Multiplexer-Benchmark:
 - `benchmarks/multiplexer/merge_benchmark_plots.py` -> `benchmarks/outputs/multiplexer/merged/`
 
 Die Plot-Skripte exportieren PNG + PDF; bei `combined` entsteht eine Datei pro Benchmark, bei `separate` je eine Datei pro Metrik.
+Optional mit `--plot-mode by_dataset`: eine große Figure mit einer Zeile pro Datensatz, gespeichert als `*_by_dataset.{png,pdf}`.
 
 ## Paper-orientierte Plot-Eigenschaften
 

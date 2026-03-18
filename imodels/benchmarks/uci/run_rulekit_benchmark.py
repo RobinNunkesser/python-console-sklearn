@@ -60,8 +60,6 @@ DEFAULT_DATASET_OPTIONS: dict[int, dict[str, Any]] = {
         "short_name": "Heart",
         "target_mode": "auto",
     },
-}
-DEFAULT_DATASET_OPTIONS.update({
     12: {
         "name": "balance_scale",
         "short_name": "Balance",
@@ -92,7 +90,7 @@ DEFAULT_DATASET_OPTIONS.update({
         "short_name": "Banknote",
         "target_mode": "auto",
     },
-})
+}
 
 
 @dataclass
@@ -528,7 +526,7 @@ Examples:
 
     parser.add_argument(
         "--datasets",
-        default="17,45",
+        default="12,17,19,45,53,78,109,267",
         help="Comma-separated UCI dataset IDs (default: 17,45)",
     )
     parser.add_argument(

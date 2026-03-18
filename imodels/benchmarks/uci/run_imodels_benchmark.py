@@ -92,8 +92,6 @@ DEFAULT_DATASET_OPTIONS: dict[int, dict[str, Any]] = {
         "short_name": "Heart",
         "target_mode": "auto",
     },
-}
-DEFAULT_DATASET_OPTIONS.update({
     12: {
         "name": "balance_scale",
         "short_name": "Balance",
@@ -124,7 +122,7 @@ DEFAULT_DATASET_OPTIONS.update({
         "short_name": "Banknote",
         "target_mode": "auto",
     },
-})
+}
 
 
 @dataclass
