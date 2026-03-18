@@ -19,8 +19,14 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from imodels import (
     C45TreeClassifier,
+    DecisionTreeClassifier,
+    FIGSClassifier,
     GreedyRuleListClassifier,
     GreedyTreeClassifier,
+    HSTreeClassifier,
+    OneRClassifier,
+    TaoTreeClassifier,
+    TreeGAMClassifier,
     SlipperClassifier,
 )
 from sklearn.compose import ColumnTransformer
@@ -33,10 +39,27 @@ from ucimlrepo import fetch_ucirepo
 
 
 ALGORITHM_REGISTRY: dict[str, Callable[..., Any]] = {
-    "SlipperClassifier": SlipperClassifier,
-    "GreedyRuleListClassifier": GreedyRuleListClassifier,
+    # --- multiclass-capable classifiers (verified on 3-class iris) ---
     "C45TreeClassifier": C45TreeClassifier,
+    "DecisionTreeClassifier": DecisionTreeClassifier,
+    "FIGSClassifier": FIGSClassifier,
+    "GreedyRuleListClassifier": GreedyRuleListClassifier,
     "GreedyTreeClassifier": GreedyTreeClassifier,
+    "HSTreeClassifier": HSTreeClassifier,
+    "OneRClassifier": OneRClassifier,
+    "SlipperClassifier": SlipperClassifier,
+    "TaoTreeClassifier": TaoTreeClassifier,
+    "TreeGAMClassifier": TreeGAMClassifier,
+    # --- excluded (binary-only or broken) ---
+    # BoostedRulesClassifier:    removed on user request
+    # BayesianRuleListClassifier: binary only
+    # BayesianRuleSetClassifier:  binary only / runtime error
+    # DecisionTreeCCPClassifier:  requires pre-fitted estimator_
+    # FPLassoClassifier:          multiclass not supported (RuleFit base)
+    # FPSkopeClassifier:          requires boolean DataFrame input
+    # HSOptimalTreeClassifier:    requires pre-fitted estimator_
+    # RuleFitClassifier:          multiclass not supported
+    # SkopeRulesClassifier:       collapses all non-zero labels to one class
 }
 
 PLOT_EXPORT_COLUMNS = [
@@ -747,7 +770,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--algorithms",
-        default="SlipperClassifier,GreedyRuleListClassifier,C45TreeClassifier,GreedyTreeClassifier",
+        default="C45TreeClassifier,DecisionTreeClassifier,FIGSClassifier,GreedyRuleListClassifier,GreedyTreeClassifier,HSTreeClassifier,OneRClassifier,SlipperClassifier,TaoTreeClassifier,TreeGAMClassifier",
         help="Comma-separated list of algorithm names",
     )
     parser.add_argument(
