@@ -26,7 +26,6 @@ from imodels import (
     HSTreeClassifier,
     OneRClassifier,
     TaoTreeClassifier,
-    TreeGAMClassifier,
     SlipperClassifier,
 )
 from sklearn.compose import ColumnTransformer
@@ -49,9 +48,9 @@ ALGORITHM_REGISTRY: dict[str, Callable[..., Any]] = {
     "OneRClassifier": OneRClassifier,
     "SlipperClassifier": SlipperClassifier,
     "TaoTreeClassifier": TaoTreeClassifier,
-    "TreeGAMClassifier": TreeGAMClassifier,
     # --- excluded (binary-only or broken) ---
     # BoostedRulesClassifier:    removed on user request
+    # TreeGAMClassifier:         removed on user request
     # BayesianRuleListClassifier: binary only
     # BayesianRuleSetClassifier:  binary only / runtime error
     # DecisionTreeCCPClassifier:  requires pre-fitted estimator_
@@ -89,6 +88,38 @@ DEFAULT_DATASET_OPTIONS: dict[int, dict[str, Any]] = {
         "target_mode": "auto",
     },
 }
+DEFAULT_DATASET_OPTIONS.update({
+    12: {
+        "name": "balance_scale",
+        "short_name": "Balance",
+        "target_mode": "auto",
+    },
+    19: {
+        "name": "car_evaluation",
+        "short_name": "Car",
+        "target_mode": "auto",
+    },
+    53: {
+        "name": "iris",
+        "short_name": "Iris",
+        "target_mode": "auto",
+    },
+    78: {
+        "name": "page_blocks_classification",
+        "short_name": "PageBlocks",
+        "target_mode": "auto",
+    },
+    109: {
+        "name": "wine",
+        "short_name": "Wine",
+        "target_mode": "auto",
+    },
+    267: {
+        "name": "banknote_authentication",
+        "short_name": "Banknote",
+        "target_mode": "auto",
+    },
+})
 
 
 @dataclass
@@ -765,12 +796,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="UCI + imodels benchmark")
     parser.add_argument(
         "--dataset-ids",
-        default="17,45",
+        default="12,17,19,45,53,78,109,267",
         help="Comma-separated list of UCI dataset IDs (e.g., 17,45)",
     )
     parser.add_argument(
         "--algorithms",
-        default="C45TreeClassifier,DecisionTreeClassifier,FIGSClassifier,GreedyRuleListClassifier,GreedyTreeClassifier,HSTreeClassifier,OneRClassifier,SlipperClassifier,TaoTreeClassifier,TreeGAMClassifier",
+        default="C45TreeClassifier,DecisionTreeClassifier,FIGSClassifier,GreedyRuleListClassifier,GreedyTreeClassifier,OneRClassifier,SlipperClassifier,TaoTreeClassifier",
         help="Comma-separated list of algorithm names",
     )
     parser.add_argument(
@@ -783,7 +814,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--n-runs",
         type=int,
-        default=1,
+        default=3,
         help="Number of runs per dataset+algorithm with seeds random_state+i",
     )
     parser.add_argument(
