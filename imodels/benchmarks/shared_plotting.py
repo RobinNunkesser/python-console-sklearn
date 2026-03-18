@@ -113,6 +113,8 @@ ALGORITHM_SHORT_NAMES: dict[str, str] = {
     "ExSTraCS_FU1": "ExS-F1",
     "ExSTraCS_FU2": "ExS-F2",
     "ExSTraCS_QRF": "ExSTraCS",
+    # RuleKit
+    "RuleClassifier": "RuleKit",
 }
 
 

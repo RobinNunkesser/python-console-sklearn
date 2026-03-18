@@ -103,12 +103,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--input-csvs",
         default=(
             "benchmarks/outputs/imodels/uci_imodels_plot_data.csv,"
-            "benchmarks/outputs/exstracs/exstracs_plot_data.csv"
+            "benchmarks/outputs/exstracs/exstracs_plot_data.csv,"
+            "benchmarks/outputs/rulekit/rulekit_plot_data.csv"
         ),
         help=(
             "Comma-separated list of input plot-data CSV files "
             "(default: benchmarks/outputs/imodels/uci_imodels_plot_data.csv,"
-            "benchmarks/outputs/exstracs/exstracs_plot_data.csv)"
+            "benchmarks/outputs/exstracs/exstracs_plot_data.csv,"
+            "benchmarks/outputs/rulekit/rulekit_plot_data.csv)"
         ),
     )
     parser.add_argument("--plot-mode", default="combined", choices=["combined", "separate", "by_dataset"])
