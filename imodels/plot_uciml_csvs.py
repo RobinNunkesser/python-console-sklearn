@@ -22,7 +22,7 @@ REQUIRED_COLUMNS = {
 }
 
 
-def add_figure_legend(legend_ax: plt.Axes, source_ax: plt.Axes) -> None:
+def add_figure_legend(legend_ax: plt.Axes, source_ax: plt.Axes, *, side: bool = False) -> None:
     handles, labels = source_ax.get_legend_handles_labels()
     unique_entries: dict[str, Any] = {}
     for handle, label in zip(handles, labels):
@@ -33,11 +33,11 @@ def add_figure_legend(legend_ax: plt.Axes, source_ax: plt.Axes) -> None:
     if not unique_entries:
         return
 
-    ncol = min(len(unique_entries), 4)
+    ncol = 1 if side else min(len(unique_entries), 4)
     legend_ax.legend(
         unique_entries.values(),
         unique_entries.keys(),
-        loc="center",
+        loc="center left" if side else "center",
         ncol=ncol,
         frameon=False,
         title="Algorithm",
@@ -213,10 +213,10 @@ def plot_results(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if plot_mode == "combined":
-        fig = plt.figure(figsize=(14, 5.8), constrained_layout=True)
-        grid = fig.add_gridspec(2, 2, height_ratios=[0.18, 1])
-        legend_ax = fig.add_subplot(grid[0, :])
-        axes = [fig.add_subplot(grid[1, 0]), fig.add_subplot(grid[1, 1])]
+        fig = plt.figure(figsize=(10.5, 8.8), constrained_layout=True)
+        grid = fig.add_gridspec(2, 2, width_ratios=[1, 0.24], height_ratios=[1, 1])
+        axes = [fig.add_subplot(grid[0, 0]), fig.add_subplot(grid[1, 0])]
+        legend_ax = fig.add_subplot(grid[:, 1])
         f1_ylabel = "F1" if error_bars == "none" else f"F1 (mean +/- {error_bars})"
         size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
         plot_metric(df, "f1", axes[0], "F1 by Dataset and Algorithm", f1_ylabel, error_bars, plot_style)
@@ -230,7 +230,7 @@ def plot_results(
             plot_style,
             xscale="log",
         )
-        add_figure_legend(legend_ax, axes[0])
+        add_figure_legend(legend_ax, axes[0], side=True)
         out = output_dir / "merged_ucimodels_combined.png"
         fig.savefig(out, dpi=150)
         print(f"Figure saved: {out}")
