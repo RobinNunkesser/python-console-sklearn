@@ -342,7 +342,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Comma-separated UCI dataset IDs (default: all known datasets)",
     )
     parser.add_argument(
-        "--algorithms", default="ExSTraCS_FU1",
+        "--algorithms", default="ExSTraCS_QRF",
         help=f"Comma-separated algorithm names. Available: {', '.join(EXSTRACS_ALGORITHMS)}",
     )
     parser.add_argument(

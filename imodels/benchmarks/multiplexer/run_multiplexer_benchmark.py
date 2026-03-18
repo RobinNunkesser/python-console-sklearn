@@ -262,10 +262,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="",
         help="Optional comma-separated dataset stems, e.g. Multiplexer6,Multiplexer11Modified",
     )
-    all_algorithms = [*ALGORITHM_REGISTRY.keys(), *EXSTRACS_ALGORITHMS.keys()]
+    default_algorithms = [*ALGORITHM_REGISTRY.keys(), "ExSTraCS_QRF"]
     parser.add_argument(
         "--algorithms",
-        default=",".join(all_algorithms),
+        default=",".join(default_algorithms),
         help="Comma-separated algorithm names (imodels + ExSTraCS variants)",
     )
     parser.add_argument("--target-col", default="class")

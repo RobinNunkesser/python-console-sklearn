@@ -88,6 +88,45 @@ UCI_METRICS: list[dict[str, str]] = [
     },
 ]
 
+ALGORITHM_SHORT_NAMES: dict[str, str] = {
+    # imodels
+    "C45TreeClassifier": "C4.5",
+    "DecisionTreeClassifier": "DT",
+    "FIGSClassifier": "FIGS",
+    "GreedyRuleListClassifier": "GRL",
+    "GreedyTreeClassifier": "GT",
+    "HSTreeClassifier": "HST",
+    "OneRClassifier": "OneR",
+    "SlipperClassifier": "SLIP",
+    "TaoTreeClassifier": "Tao",
+    # ExSTraCS variants
+    "ExSTraCS": "ExS",
+    "ExSTraCS_FU1": "ExS-F1",
+    "ExSTraCS_FU2": "ExS-F2",
+    "ExSTraCS_QRF": "ExS-QRF",
+}
+
+
+def _algorithm_display_name(name: str) -> str:
+    return ALGORITHM_SHORT_NAMES.get(name, name)
+
+
+def _algorithm_display_map(algorithm_names: list[str]) -> dict[str, str]:
+    base_names = {name: _algorithm_display_name(name) for name in algorithm_names}
+    counts: dict[str, int] = {}
+    for base in base_names.values():
+        counts[base] = counts.get(base, 0) + 1
+
+    display_map: dict[str, str] = {}
+    for name in algorithm_names:
+        base = base_names[name]
+        # Keep short names concise, but disambiguate collisions safely.
+        if counts[base] > 1:
+            display_map[name] = f"{base} ({name})"
+        else:
+            display_map[name] = base
+    return display_map
+
 
 def add_figure_legend(
     legend_ax: plt.Axes,
@@ -165,13 +204,16 @@ def plot_metric_panel(
     if mean_col not in df.columns:
         raise ValueError(f"Missing required column for plotting: {mean_col}")
 
-    pivot = df.pivot(index=dataset_label_col, columns="algorithm", values=mean_col)
+    raw_pivot = df.pivot(index=dataset_label_col, columns="algorithm", values=mean_col)
+    display_map = _algorithm_display_map(list(raw_pivot.columns))
+    pivot = raw_pivot.rename(columns=display_map)
 
     err_data = None
     if error_bars != "none":
         err_col = f"{metric}_{error_bars}"
         if err_col in df.columns:
-            err_data = df.pivot(index=dataset_label_col, columns="algorithm", values=err_col).reindex_like(pivot)
+            err_data = df.pivot(index=dataset_label_col, columns="algorithm", values=err_col).reindex_like(raw_pivot)
+            err_data = err_data.rename(columns=display_map).reindex_like(pivot)
             if xscale == "log":
                 err_data = err_data.clip(upper=pivot * config.markers.log_clip_fraction)
 
