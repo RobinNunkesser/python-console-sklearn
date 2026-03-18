@@ -90,16 +90,16 @@ def plot_metric(
         if err_col in df.columns:
             yerr = df.pivot(index="plot_dataset", columns="algorithm", values=err_col).reindex_like(pivot)
 
-    kwargs: dict[str, Any] = {"kind": "bar", "ax": ax}
+    kwargs: dict[str, Any] = {"kind": "barh", "ax": ax}
     if yerr is not None:
         kwargs["yerr"] = yerr
         kwargs["capsize"] = 4
 
     pivot.plot(**kwargs)
     ax.set_title(title)
-    ax.set_ylabel(ylabel)
-    ax.set_xlabel("Dataset")
-    ax.grid(axis="y", alpha=0.3)
+    ax.set_xlabel(ylabel)
+    ax.set_ylabel("Dataset")
+    ax.grid(axis="x", alpha=0.3)
     ax.legend(title="Algorithm")
 
 
@@ -111,7 +111,7 @@ def plot_results(df: pd.DataFrame, output_dir: Path, plot_mode: str, error_bars:
         f1_ylabel = "F1" if error_bars == "none" else f"F1 (mean +/- {error_bars})"
         size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
         plot_metric(df, "f1", axes[0], "F1 by Dataset and Algorithm", f1_ylabel, error_bars)
-        plot_metric(df, "model_size", axes[1], "Model Size", size_ylabel, error_bars)
+        plot_metric(df, "model_size", axes[1], "Model Size by Dataset and Algorithm", size_ylabel, error_bars)
         out = output_dir / "merged_ucimodels_combined.png"
         fig.savefig(out, dpi=150)
         print(f"Figure saved: {out}")
@@ -150,10 +150,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Create merged plots from one or more benchmark plot-data CSVs")
     parser.add_argument(
         "--input-csvs",
-        required=True,
+        default="results/uci_imodels_plot_data.csv,results_exstracs/exstracs_plot_data.csv",
         help=(
-            "Comma-separated list of input plot-data CSV files, "
-            "e.g. results_a/uci_imodels_plot_data.csv,results_b/uci_imodels_plot_data.csv"
+            "Comma-separated list of input plot-data CSV files "
+            "(default: results/uci_imodels_plot_data.csv,results_exstracs/exstracs_plot_data.csv)"
         ),
     )
     parser.add_argument("--plot-mode", default="combined", choices=["combined", "separate"])
