@@ -438,7 +438,7 @@ def plot_metric(
 ) -> None:
     mean_col = f"{metric}_mean" if f"{metric}_mean" in results_df.columns else metric
     dataset_label_col = "plot_dataset" if "plot_dataset" in results_df.columns else "dataset"
-    # Show performance per dataset (x-axis), grouped by algorithm.
+    # Horizontal bars: datasets on y-axis, metric values on x-axis, algorithms grouped.
     pivot = results_df.pivot(index=dataset_label_col, columns="algorithm", values=mean_col)
 
     yerr = None
@@ -447,16 +447,16 @@ def plot_metric(
         if err_col in results_df.columns:
             yerr = results_df.pivot(index=dataset_label_col, columns="algorithm", values=err_col).reindex_like(pivot)
 
-    plot_kwargs: dict[str, Any] = {"kind": "bar", "ax": ax}
+    plot_kwargs: dict[str, Any] = {"kind": "barh", "ax": ax}
     if yerr is not None:
         plot_kwargs["yerr"] = yerr
         plot_kwargs["capsize"] = 4
 
     pivot.plot(**plot_kwargs)
     ax.set_title(title)
-    ax.set_ylabel(ylabel)
-    ax.set_xlabel("Dataset")
-    ax.grid(axis="y", alpha=0.3)
+    ax.set_xlabel(ylabel)
+    ax.set_ylabel("Dataset")
+    ax.grid(axis="x", alpha=0.3)
     ax.legend(title="Algorithm")
 
 
@@ -477,7 +477,7 @@ def plot_results(
         f1_ylabel = "F1" if error_bars == "none" else f"F1 (mean +/- {error_bars})"
         size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
         plot_metric(results_df, "f1", axes[0], "F1 by Dataset and Algorithm", f1_ylabel, error_bars)
-        plot_metric(results_df, "model_size", axes[1], "Model Size", size_ylabel, error_bars)
+        plot_metric(results_df, "model_size", axes[1], "Model Size by Dataset and Algorithm", size_ylabel, error_bars)
         combined_path = output_dir / "uci_imodels_combined.png"
         fig.savefig(combined_path, dpi=150)
         print(f"Figure saved: {combined_path}")
