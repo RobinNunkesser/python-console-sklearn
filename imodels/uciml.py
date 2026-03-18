@@ -39,6 +39,20 @@ ALGORITHM_REGISTRY: dict[str, Callable[..., Any]] = {
     "GreedyTreeClassifier": GreedyTreeClassifier,
 }
 
+PLOT_EXPORT_COLUMNS = [
+    "dataset_id",
+    "dataset",
+    "plot_dataset",
+    "algorithm",
+    "runs_total",
+    "f1_mean",
+    "f1_std",
+    "f1_ci95",
+    "model_size_mean",
+    "model_size_std",
+    "model_size_ci95",
+]
+
 DEFAULT_DATASET_OPTIONS: dict[int, dict[str, Any]] = {
     17: {
         "name": "breast_cancer_wisconsin_diagnostic",
@@ -483,6 +497,22 @@ def aggregate_results(results_df: pd.DataFrame) -> pd.DataFrame:
     return agg_df
 
 
+def build_plot_export_df(agg_df: pd.DataFrame) -> pd.DataFrame:
+    """Create a stable plot-data export schema for downstream plotting scripts."""
+    if agg_df.empty:
+        return pd.DataFrame(columns=PLOT_EXPORT_COLUMNS)
+
+    export_df = agg_df.copy()
+    if "plot_dataset" not in export_df.columns:
+        export_df["plot_dataset"] = export_df["dataset"]
+
+    for col in PLOT_EXPORT_COLUMNS:
+        if col not in export_df.columns:
+            export_df[col] = pd.NA
+
+    return export_df[PLOT_EXPORT_COLUMNS].copy()
+
+
 def normal_cdf(x: float) -> float:
     """CDF of the standard normal distribution."""
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
@@ -682,6 +712,8 @@ def run_benchmark(
             axis=1,
         )
 
+    plot_export_df = build_plot_export_df(agg_df)
+
     significance_df = compute_significance_pairs(results_df, alpha=alpha) if significance_check else pd.DataFrame()
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -692,6 +724,10 @@ def run_benchmark(
     csv_agg_path = output_dir / "uci_imodels_results_agg.csv"
     agg_df.to_csv(csv_agg_path, index=False)
     print(f"CSV saved (aggregate): {csv_agg_path}")
+
+    csv_plot_path = output_dir / "uci_imodels_plot_data.csv"
+    plot_export_df.to_csv(csv_plot_path, index=False)
+    print(f"CSV saved (plot data): {csv_plot_path}")
 
     if significance_check:
         csv_sig_path = output_dir / "uci_imodels_significance.csv"
