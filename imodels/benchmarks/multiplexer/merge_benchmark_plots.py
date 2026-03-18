@@ -56,10 +56,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--input-csvs",
-        default="benchmarks/outputs/multiplexer/multiplexer_plot_data.csv",
+        default=(
+            "benchmarks/outputs/multiplexer/multiplexer_plot_data.csv,"
+            "benchmarks/outputs/multiplexer/rulekit/rulekit_multiplexer_plot_data.csv"
+        ),
         help=(
             "Comma-separated list of multiplexer plot-data CSV files "
-            "(default: benchmarks/outputs/multiplexer/multiplexer_plot_data.csv)"
+            "(default: multiplexer_plot_data.csv,rulekit/rulekit_multiplexer_plot_data.csv)"
         ),
     )
     parser.add_argument("--plot-mode", default="combined", choices=["combined", "separate", "by_dataset"])

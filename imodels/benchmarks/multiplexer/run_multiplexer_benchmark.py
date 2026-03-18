@@ -57,6 +57,13 @@ EXSTRACS_ALGORITHMS: dict[str, dict[str, Any]] = {
 }
 
 
+def resolve_project_path(raw_path: str) -> Path:
+    path = Path(raw_path).expanduser()
+    if path.is_absolute():
+        return path
+    return PROJECT_ROOT / path
+
+
 def parse_csv_list(raw: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
@@ -255,7 +262,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--real-dir",
         default="data/csv/Real",
-        help="Directory containing Multiplexer*.csv files",
+        help="Directory containing Multiplexer*.csv files (relative paths are resolved from the repo root)",
     )
     parser.add_argument(
         "--datasets",
@@ -276,7 +283,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--plot-mode", default="combined", choices=["combined", "separate", "by_dataset"])
     parser.add_argument("--plot-style", default="dots", choices=["dots", "bars"])
     parser.add_argument("--error-bars", default="std", choices=["none", "std", "ci95"])
-    parser.add_argument("--output-dir", default="benchmarks/outputs/multiplexer")
+    parser.add_argument(
+        "--output-dir",
+        default="benchmarks/outputs/multiplexer",
+        help="Output directory (relative paths are resolved from the repo root)",
+    )
     parser.add_argument("--no-show", action="store_true")
     return parser
 
@@ -284,7 +295,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = build_arg_parser().parse_args()
 
-    real_dir = Path(args.real_dir)
+    real_dir = resolve_project_path(args.real_dir)
     all_files = list_multiplexer_csvs(real_dir)
 
     requested = set(parse_csv_list(args.datasets)) if args.datasets else None
@@ -363,7 +374,7 @@ def main() -> None:
     agg_df = aggregate_results(results_df)
     plot_df = build_plot_export_df(agg_df)
 
-    out_dir = Path(args.output_dir)
+    out_dir = resolve_project_path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     raw_csv = out_dir / "multiplexer_results.csv"
