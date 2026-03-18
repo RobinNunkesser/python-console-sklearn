@@ -13,6 +13,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+TITLE_FONTSIZE = 14
+AXIS_LABEL_FONTSIZE = 12
+TICK_FONTSIZE = 10
+LEGEND_FONTSIZE = 10
+LEGEND_TITLE_FONTSIZE = 11
+
 REQUIRED_COLUMNS = {
     "dataset_id",
     "dataset",
@@ -41,6 +47,8 @@ def add_figure_legend(legend_ax: plt.Axes, source_ax: plt.Axes, *, side: bool = 
         ncol=ncol,
         frameon=False,
         title="Algorithm",
+        fontsize=LEGEND_FONTSIZE,
+        title_fontsize=LEGEND_TITLE_FONTSIZE,
         columnspacing=1.2,
         handletextpad=0.6,
     )
@@ -66,6 +74,15 @@ def add_dataset_background_bands(ax: plt.Axes) -> None:
 
 def parse_csv_list(raw: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def save_figure_outputs(fig: plt.Figure, output_base_path: Path) -> None:
+    png_path = output_base_path.with_suffix(".png")
+    pdf_path = output_base_path.with_suffix(".pdf")
+    fig.savefig(png_path, dpi=150)
+    fig.savefig(pdf_path)
+    print(f"Figure saved: {png_path}")
+    print(f"Figure saved: {pdf_path}")
 
 
 def load_and_merge_plot_data(input_paths: list[Path]) -> pd.DataFrame:
@@ -194,9 +211,10 @@ def plot_metric(
         raise ValueError(f"Unknown plot_style: {plot_style}")
 
     ax.set_xscale(xscale)
-    ax.set_title(title)
-    ax.set_xlabel(ylabel)
-    ax.set_ylabel("Dataset")
+    ax.set_title(title, fontsize=TITLE_FONTSIZE)
+    ax.set_xlabel(ylabel, fontsize=AXIS_LABEL_FONTSIZE)
+    ax.set_ylabel("Dataset", fontsize=AXIS_LABEL_FONTSIZE)
+    ax.tick_params(axis="both", labelsize=TICK_FONTSIZE)
     ax.set_axisbelow(True)
     ax.grid(axis="x", alpha=0.3)
     add_dataset_background_bands(ax)
@@ -231,9 +249,7 @@ def plot_results(
             xscale="log",
         )
         add_figure_legend(legend_ax, axes[0], side=True)
-        out = output_dir / "merged_ucimodels_combined.png"
-        fig.savefig(out, dpi=150)
-        print(f"Figure saved: {out}")
+        save_figure_outputs(fig, output_dir / "merged_ucimodels_combined")
         if no_show:
             plt.close(fig)
         else:
@@ -248,9 +264,7 @@ def plot_results(
         f1_ylabel = "F1" if error_bars == "none" else f"F1 (mean +/- {error_bars})"
         plot_metric(df, "f1", ax_f1, "F1 by Dataset and Algorithm", f1_ylabel, error_bars, plot_style)
         add_figure_legend(legend_ax_f1, ax_f1)
-        out_f1 = output_dir / "merged_ucimodels_f1.png"
-        fig_f1.savefig(out_f1, dpi=150)
-        print(f"Figure saved: {out_f1}")
+        save_figure_outputs(fig_f1, output_dir / "merged_ucimodels_f1")
 
         fig_size = plt.figure(figsize=(8, 5.4), constrained_layout=True)
         grid_size = fig_size.add_gridspec(2, 1, height_ratios=[0.2, 1])
@@ -259,9 +273,7 @@ def plot_results(
         size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
         plot_metric(df, "model_size", ax_size, "Model Size", size_ylabel, error_bars, plot_style, xscale="log")
         add_figure_legend(legend_ax_size, ax_size)
-        out_size = output_dir / "merged_ucimodels_model_size.png"
-        fig_size.savefig(out_size, dpi=150)
-        print(f"Figure saved: {out_size}")
+        save_figure_outputs(fig_size, output_dir / "merged_ucimodels_model_size")
 
         if no_show:
             plt.close(fig_f1)

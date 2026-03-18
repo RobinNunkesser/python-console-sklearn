@@ -46,6 +46,7 @@ from uciml import (
 # Use "ExSTraCS_QRF" as the default.
 EXSTRACS_ALGORITHMS = {
     "ExSTraCS":     {"rule_compaction": None},
+    "ExSTraCS_FU1": {"rule_compaction": "Fu1"},
     "ExSTraCS_FU2": {"rule_compaction": "Fu2"},
     "ExSTraCS_QRF": {"rule_compaction": "QRF"},
 }
@@ -340,7 +341,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Comma-separated UCI dataset IDs (default: all known datasets)",
     )
     parser.add_argument(
-        "--algorithms", default="ExSTraCS_QRF",
+        "--algorithms", default="ExSTraCS_FU1",
         help=f"Comma-separated algorithm names. Available: {', '.join(EXSTRACS_ALGORITHMS)}",
     )
     parser.add_argument(
