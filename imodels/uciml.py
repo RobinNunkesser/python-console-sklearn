@@ -801,7 +801,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--algorithms",
-        default="C45TreeClassifier,DecisionTreeClassifier,FIGSClassifier,GreedyRuleListClassifier,GreedyTreeClassifier,OneRClassifier,SlipperClassifier,TaoTreeClassifier",
+        default="GreedyRuleListClassifier,GreedyTreeClassifier,OneRClassifier,SlipperClassifier,HSTreeClassifier",
         help="Comma-separated list of algorithm names",
     )
     parser.add_argument(
