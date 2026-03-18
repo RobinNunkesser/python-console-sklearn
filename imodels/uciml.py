@@ -42,12 +42,14 @@ ALGORITHM_REGISTRY: dict[str, Callable[..., Any]] = {
 DEFAULT_DATASET_OPTIONS: dict[int, dict[str, Any]] = {
     17: {
         "name": "breast_cancer_wisconsin_diagnostic",
+        "short_name": "BreastCancer",
         "target_mode": "auto",
     },
     # Der Original-Datensatz hat Targets 0..4; fuer robuste Binary-Modelle
     # transformieren wir standardmaessig zu 0 vs >0.
     45: {
         "name": "heart_disease",
+        "short_name": "Heart",
         "target_mode": "nonzero_is_positive",
     },
 }
@@ -57,6 +59,7 @@ DEFAULT_DATASET_OPTIONS: dict[int, dict[str, Any]] = {
 class DatasetConfig:
     dataset_id: int
     name: str
+    short_name: str | None = None
     target_mode: str = "auto"
 
 
@@ -253,6 +256,76 @@ def parse_csv_list(raw: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
+def parse_dataset_short_names(raw: str) -> tuple[dict[int, str], dict[str, str]]:
+    """Parst Kurzlabels aus '17:BreastCancer,heart_disease:Heart'."""
+    mapping_by_id: dict[int, str] = {}
+    mapping_by_name: dict[str, str] = {}
+    if not raw.strip():
+        return mapping_by_id, mapping_by_name
+
+    for token in raw.split(","):
+        item = token.strip()
+        if not item:
+            continue
+        if ":" not in item:
+            raise ValueError(
+                f"Ungueltiges Kurzlabel-Format '{item}'. Erwartet: dataset_id:label"
+            )
+        ds_id_raw, short_label = item.split(":", 1)
+        key_raw = ds_id_raw.strip()
+        short_label = short_label.strip()
+        if not key_raw or not short_label:
+            raise ValueError(
+                f"Ungueltiges Kurzlabel-Format '{item}'. Erwartet: dataset_id:label oder dataset_name:label"
+            )
+
+        if key_raw.isdigit():
+            mapping_by_id[int(key_raw)] = short_label
+        else:
+            mapping_by_name[key_raw.strip().lower()] = short_label
+
+    return mapping_by_id, mapping_by_name
+
+
+def auto_short_dataset_name(dataset_name: str, dataset_id: int) -> str:
+    """Erzeugt ein kurzes, lesbares Label fuer unbekannte Datensaetze."""
+    tokens = [tok for tok in str(dataset_name).replace("-", "_").split("_") if tok]
+    if not tokens:
+        return f"DS{dataset_id}"
+
+    if len(tokens) == 1:
+        label = tokens[0]
+        return label[:14] if len(label) > 14 else label
+
+    if len(tokens) <= 3:
+        label = "".join(tok[:5].capitalize() for tok in tokens)
+        return label[:18]
+
+    acronym = "".join(tok[0].upper() for tok in tokens if tok)
+    return acronym if acronym else f"DS{dataset_id}"
+
+
+def resolve_plot_dataset_label(
+    dataset_id: int,
+    dataset_name: str,
+    default_short_names_by_id: dict[int, str],
+    user_short_names_by_id: dict[int, str],
+    user_short_names_by_name: dict[str, str],
+) -> str:
+    """Wendet Label-Prioritaet an: user-id > user-name > default-id > auto."""
+    if dataset_id in user_short_names_by_id:
+        return user_short_names_by_id[dataset_id]
+
+    normalized_name = str(dataset_name).strip().lower()
+    if normalized_name in user_short_names_by_name:
+        return user_short_names_by_name[normalized_name]
+
+    if dataset_id in default_short_names_by_id:
+        return default_short_names_by_id[dataset_id]
+
+    return auto_short_dataset_name(dataset_name, dataset_id)
+
+
 def build_dataset_configs(dataset_ids: list[int]) -> list[DatasetConfig]:
     configs: list[DatasetConfig] = []
     for dataset_id in dataset_ids:
@@ -261,6 +334,7 @@ def build_dataset_configs(dataset_ids: list[int]) -> list[DatasetConfig]:
             DatasetConfig(
                 dataset_id=dataset_id,
                 name=defaults.get("name", f"uci_{dataset_id}"),
+                short_name=defaults.get("short_name"),
                 target_mode=defaults.get("target_mode", "auto"),
             )
         )
@@ -276,13 +350,15 @@ def plot_metric(
     error_bars: str = "none",
 ) -> None:
     mean_col = f"{metric}_mean" if f"{metric}_mean" in results_df.columns else metric
-    pivot = results_df.pivot(index="algorithm", columns="dataset", values=mean_col)
+    dataset_label_col = "plot_dataset" if "plot_dataset" in results_df.columns else "dataset"
+    # Show performance per dataset (x-axis), grouped by algorithm.
+    pivot = results_df.pivot(index=dataset_label_col, columns="algorithm", values=mean_col)
 
     yerr = None
     if error_bars != "none":
         err_col = f"{metric}_{error_bars}"
         if err_col in results_df.columns:
-            yerr = results_df.pivot(index="algorithm", columns="dataset", values=err_col).reindex_like(pivot)
+            yerr = results_df.pivot(index=dataset_label_col, columns="algorithm", values=err_col).reindex_like(pivot)
 
     plot_kwargs: dict[str, Any] = {"kind": "bar", "ax": ax}
     if yerr is not None:
@@ -292,9 +368,9 @@ def plot_metric(
     pivot.plot(**plot_kwargs)
     ax.set_title(title)
     ax.set_ylabel(ylabel)
-    ax.set_xlabel("Algorithmus")
+    ax.set_xlabel("Dataset")
     ax.grid(axis="y", alpha=0.3)
-    ax.legend(title="Datensatz")
+    ax.legend(title="Algorithm")
 
 
 def plot_results(
@@ -311,10 +387,10 @@ def plot_results(
 
     if plot_mode == "combined":
         fig, axes = plt.subplots(1, 2, figsize=(14, 5), constrained_layout=True)
-        f1_ylabel = "F1" if error_bars == "none" else f"F1 (Mittelwert +/- {error_bars})"
-        size_ylabel = "Groesse" if error_bars == "none" else f"Groesse (Mittelwert +/- {error_bars})"
-        plot_metric(results_df, "f1", axes[0], "F1 nach Datensatz und Algorithmus", f1_ylabel, error_bars)
-        plot_metric(results_df, "model_size", axes[1], "Modellgroesse", size_ylabel, error_bars)
+        f1_ylabel = "F1" if error_bars == "none" else f"F1 (mean +/- {error_bars})"
+        size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
+        plot_metric(results_df, "f1", axes[0], "F1 by Dataset and Algorithm", f1_ylabel, error_bars)
+        plot_metric(results_df, "model_size", axes[1], "Model Size", size_ylabel, error_bars)
         combined_path = output_dir / "uci_imodels_combined.png"
         fig.savefig(combined_path, dpi=150)
         print(f"Figure gespeichert: {combined_path}")
@@ -326,15 +402,15 @@ def plot_results(
 
     if plot_mode == "separate":
         fig_f1, ax_f1 = plt.subplots(figsize=(8, 5), constrained_layout=True)
-        f1_ylabel = "F1" if error_bars == "none" else f"F1 (Mittelwert +/- {error_bars})"
-        plot_metric(results_df, "f1", ax_f1, "F1 nach Datensatz und Algorithmus", f1_ylabel, error_bars)
+        f1_ylabel = "F1" if error_bars == "none" else f"F1 (mean +/- {error_bars})"
+        plot_metric(results_df, "f1", ax_f1, "F1 by Dataset and Algorithm", f1_ylabel, error_bars)
         f1_path = output_dir / "uci_imodels_f1.png"
         fig_f1.savefig(f1_path, dpi=150)
         print(f"Figure gespeichert: {f1_path}")
 
         fig_size, ax_size = plt.subplots(figsize=(8, 5), constrained_layout=True)
-        size_ylabel = "Groesse" if error_bars == "none" else f"Groesse (Mittelwert +/- {error_bars})"
-        plot_metric(results_df, "model_size", ax_size, "Modellgroesse", size_ylabel, error_bars)
+        size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
+        plot_metric(results_df, "model_size", ax_size, "Model Size", size_ylabel, error_bars)
         size_path = output_dir / "uci_imodels_model_size.png"
         fig_size.savefig(size_path, dpi=150)
         print(f"Figure gespeichert: {size_path}")
@@ -500,6 +576,8 @@ def run_benchmark(
     algorithm_names: list[str],
     random_state: int,
     n_runs: int,
+    dataset_short_names_by_id: dict[int, str],
+    dataset_short_names_by_name: dict[str, str],
     output_dir: Path,
     plot_mode: str,
     no_show: bool,
@@ -508,6 +586,11 @@ def run_benchmark(
     alpha: float,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     dataset_configs = build_dataset_configs(dataset_ids)
+    default_short_names_by_id = {
+        cfg.dataset_id: cfg.short_name
+        for cfg in dataset_configs
+        if cfg.short_name
+    }
 
     if n_runs < 1:
         raise ValueError("n_runs muss >= 1 sein")
@@ -566,6 +649,20 @@ def run_benchmark(
 
     results_df = pd.DataFrame(rows)
     agg_df = aggregate_results(results_df)
+
+    if not agg_df.empty:
+        agg_df = agg_df.copy()
+        agg_df["plot_dataset"] = agg_df.apply(
+            lambda row: resolve_plot_dataset_label(
+                dataset_id=int(row["dataset_id"]),
+                dataset_name=str(row["dataset"]),
+                default_short_names_by_id=default_short_names_by_id,
+                user_short_names_by_id=dataset_short_names_by_id,
+                user_short_names_by_name=dataset_short_names_by_name,
+            ),
+            axis=1,
+        )
+
     significance_df = compute_significance_pairs(results_df, alpha=alpha) if significance_check else pd.DataFrame()
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -618,6 +715,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Fehlerbalken im Plot: keine, Standardabweichung oder 95%%-Konfidenzintervall",
     )
     parser.add_argument(
+        "--dataset-short-names",
+        default="",
+        help=(
+            "Optionale Plot-Kurzlabels als Liste, z.B. "
+            "17:BreastCancer,heart_disease:Heart"
+        ),
+    )
+    parser.add_argument(
         "--significance-check",
         action="store_true",
         help="Fuehrt optional paarweise Signifikanztests je Datensatz aus",
@@ -643,6 +748,7 @@ def main() -> None:
 
     dataset_ids = [int(s) for s in parse_csv_list(args.dataset_ids)]
     algorithm_names = parse_csv_list(args.algorithms)
+    dataset_short_names_by_id, dataset_short_names_by_name = parse_dataset_short_names(args.dataset_short_names)
 
     if not (0.0 < args.alpha < 1.0):
         raise ValueError("alpha muss zwischen 0 und 1 liegen")
@@ -652,6 +758,8 @@ def main() -> None:
         algorithm_names=algorithm_names,
         random_state=args.random_state,
         n_runs=args.n_runs,
+        dataset_short_names_by_id=dataset_short_names_by_id,
+        dataset_short_names_by_name=dataset_short_names_by_name,
         output_dir=Path(args.output_dir),
         plot_mode=args.plot_mode,
         no_show=args.no_show,
