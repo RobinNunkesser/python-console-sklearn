@@ -11,6 +11,7 @@ imodels benchmark outputs.
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -22,18 +23,20 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OrdinalEncoder
 from skExSTraCS import ExSTraCS
 
-# Reuse shared utilities from the imodels benchmark script — no duplication.
-from run_imodels_benchmark import (
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from benchmarks.shared_cli import parse_csv_list, resolve_project_path
+from benchmarks.uci.shared_datasets import (
     DEFAULT_DATASET_OPTIONS,
     DatasetBundle,
-    aggregate_results,
     build_dataset_configs,
-    build_plot_export_df,
     choose_split_params,
     load_uci_dataset,
-    parse_csv_list,
+    parse_dataset_short_names,
     resolve_plot_dataset_label,
 )
+from benchmarks.uci.shared_results import aggregate_results, build_plot_export_df
 
 
 # ---------------------------------------------------------------------------
@@ -306,29 +309,6 @@ def run_benchmark(
 # CLI
 # ---------------------------------------------------------------------------
 
-def parse_dataset_short_names(raw: str) -> tuple[dict[int, str], dict[str, str]]:
-    """Parse short labels from '17:BreastCancer,heart_disease:Heart'."""
-    mapping_by_id: dict[int, str] = {}
-    mapping_by_name: dict[str, str] = {}
-    if not raw.strip():
-        return mapping_by_id, mapping_by_name
-    for token in raw.split(","):
-        item = token.strip()
-        if not item:
-            continue
-        if ":" not in item:
-            raise ValueError(f"Invalid short-label format '{item}'. Expected: id:label or name:label")
-        key_raw, label = item.split(":", 1)
-        key_raw, label = key_raw.strip(), label.strip()
-        if not key_raw or not label:
-            raise ValueError(f"Invalid short-label format '{item}'.")
-        if key_raw.isdigit():
-            mapping_by_id[int(key_raw)] = label
-        else:
-            mapping_by_name[key_raw.lower()] = label
-    return mapping_by_id, mapping_by_name
-
-
 def build_arg_parser() -> argparse.ArgumentParser:
     default_ids = ",".join(str(k) for k in sorted(DEFAULT_DATASET_OPTIONS))
     parser = argparse.ArgumentParser(
@@ -386,7 +366,7 @@ def main() -> None:
         population_size=args.population_size,
         dataset_short_names_by_id=short_by_id,
         dataset_short_names_by_name=short_by_name,
-        output_dir=Path(args.output_dir),
+        output_dir=resolve_project_path(args.output_dir),
         no_show=args.no_show,
     )
 

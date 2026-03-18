@@ -38,21 +38,21 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from benchmarks.multiplexer.multiplexer_plotting import build_plot_export_df, plot_results
 
 ALGORITHM_REGISTRY: dict[str, Callable[..., Any]] = {
-    "C45TreeClassifier": C45TreeClassifier,
-    "DecisionTreeClassifier": DecisionTreeClassifier,
-    "FIGSClassifier": FIGSClassifier,
-    "GreedyRuleListClassifier": GreedyRuleListClassifier,
+    #"C45TreeClassifier": C45TreeClassifier,
+    #"DecisionTreeClassifier": DecisionTreeClassifier,
+    #"FIGSClassifier": FIGSClassifier,
+    #"GreedyRuleListClassifier": GreedyRuleListClassifier,
     "GreedyTreeClassifier": GreedyTreeClassifier,
     "HSTreeClassifier": HSTreeClassifier,
     "OneRClassifier": OneRClassifier,
     "SlipperClassifier": SlipperClassifier,
-    "TaoTreeClassifier": TaoTreeClassifier,
+    #"TaoTreeClassifier": TaoTreeClassifier,
 }
 
 EXSTRACS_ALGORITHMS: dict[str, dict[str, Any]] = {
-    "ExSTraCS": {"rule_compaction": None},
-    "ExSTraCS_FU1": {"rule_compaction": "Fu1"},
-    "ExSTraCS_FU2": {"rule_compaction": "Fu2"},
+    #"ExSTraCS": {"rule_compaction": None},
+    #"ExSTraCS_FU1": {"rule_compaction": "Fu1"},
+    #"ExSTraCS_FU2": {"rule_compaction": "Fu2"},
     "ExSTraCS_QRF": {"rule_compaction": "QRF"},
 }
 

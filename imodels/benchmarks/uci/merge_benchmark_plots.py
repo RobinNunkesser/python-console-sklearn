@@ -15,6 +15,7 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from benchmarks.shared_cli import parse_csv_list, resolve_project_path
 from benchmarks.shared_plotting import UCI_METRICS, plot_benchmark_results
 
 REQUIRED_COLUMNS = {
@@ -106,12 +107,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "benchmarks/outputs/exstracs/exstracs_plot_data.csv,"
             "benchmarks/outputs/rulekit/rulekit_plot_data.csv"
         ),
-        help=(
-            "Comma-separated list of input plot-data CSV files "
-            "(default: benchmarks/outputs/imodels/uci_imodels_plot_data.csv,"
-            "benchmarks/outputs/exstracs/exstracs_plot_data.csv,"
-            "benchmarks/outputs/rulekit/rulekit_plot_data.csv)"
-        ),
     )
     parser.add_argument("--plot-mode", default="combined", choices=["combined", "separate", "by_dataset"])
     parser.add_argument("--plot-style", default="dots", choices=["dots", "bars"])
@@ -125,18 +120,19 @@ def main() -> None:
     parser = build_arg_parser()
     args = parser.parse_args()
 
-    input_paths = [Path(p) for p in parse_csv_list(args.input_csvs)]
+    input_paths = [resolve_project_path(p) for p in parse_csv_list(args.input_csvs)]
     merged_df = load_and_merge_plot_data(input_paths)
 
     # Useful for debugging/traceability of merged sources.
-    merged_csv_path = Path(args.output_dir) / "merged_plot_data.csv"
-    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+    output_dir = resolve_project_path(args.output_dir)
+    merged_csv_path = output_dir / "merged_plot_data.csv"
+    output_dir.mkdir(parents=True, exist_ok=True)
     merged_df.to_csv(merged_csv_path, index=False)
     print(f"CSV saved (merged plot data): {merged_csv_path}")
 
     plot_results(
         merged_df,
-        output_dir=Path(args.output_dir),
+        output_dir=output_dir,
         plot_mode=args.plot_mode,
         error_bars=args.error_bars,
         plot_style=args.plot_style,

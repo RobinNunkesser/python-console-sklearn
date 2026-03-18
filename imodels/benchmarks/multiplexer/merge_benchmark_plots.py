@@ -11,11 +11,8 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from benchmarks.shared_cli import parse_csv_list, resolve_project_path
 from benchmarks.multiplexer.multiplexer_plotting import REQUIRED_PLOT_COLUMNS, plot_results
-
-
-def parse_csv_list(raw: str) -> list[str]:
-    return [item.strip() for item in raw.split(",") if item.strip()]
 
 
 def load_and_merge_plot_data(input_paths: list[Path]) -> pd.DataFrame:
@@ -76,10 +73,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = build_arg_parser().parse_args()
 
-    input_paths = [Path(p) for p in parse_csv_list(args.input_csvs)]
+    input_paths = [resolve_project_path(p) for p in parse_csv_list(args.input_csvs)]
     merged_df = load_and_merge_plot_data(input_paths)
 
-    output_dir = Path(args.output_dir)
+    output_dir = resolve_project_path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     merged_csv_path = output_dir / "merged_plot_data.csv"
