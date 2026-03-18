@@ -22,14 +22,22 @@ REQUIRED_COLUMNS = {
 }
 
 
-def add_dataset_separators(ax: plt.Axes) -> None:
+def add_dataset_background_bands(ax: plt.Axes) -> None:
     ticks = sorted({float(tick) for tick in ax.get_yticks()})
-    if len(ticks) < 2:
+    if not ticks:
         return
 
-    for left, right in zip(ticks, ticks[1:]):
-        midpoint = (left + right) / 2
-        ax.axhline(midpoint, color="0.88", linewidth=0.8, zorder=0)
+    if len(ticks) == 1:
+        bounds = [ticks[0] - 0.5, ticks[0] + 0.5]
+    else:
+        midpoints = [(left + right) / 2 for left, right in zip(ticks, ticks[1:])]
+        first_half_step = (ticks[1] - ticks[0]) / 2
+        last_half_step = (ticks[-1] - ticks[-2]) / 2
+        bounds = [ticks[0] - first_half_step, *midpoints, ticks[-1] + last_half_step]
+
+    for idx, (lower, upper) in enumerate(zip(bounds, bounds[1:])):
+        if idx % 2 == 0:
+            ax.axhspan(lower, upper, facecolor="0.96", edgecolor="none", zorder=-1)
 
 
 def parse_csv_list(raw: str) -> list[str]:
@@ -167,7 +175,7 @@ def plot_metric(
     ax.set_ylabel("Dataset")
     ax.set_axisbelow(True)
     ax.grid(axis="x", alpha=0.3)
-    add_dataset_separators(ax)
+    add_dataset_background_bands(ax)
     ax.legend(title="Algorithm")
 
 
