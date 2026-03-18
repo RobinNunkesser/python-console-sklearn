@@ -1,8 +1,8 @@
-"""Vergleich von imodels-Klassifikatoren auf UCI-ML-Repo-Datensätzen.
+"""Benchmark imodels classifiers on UCI-ML-Repo datasets.
 
-Standardmäßig werden die Datensätze 17 (Breast Cancer Wisconsin Diagnostic)
-und 45 (Heart Disease) geladen, train/test-splits abhängig von der
-Datensatzgröße gewählt und mehrere Algorithmen sequentiell ausgewertet.
+By default, datasets 17 (Breast Cancer Wisconsin Diagnostic)
+and 45 (Heart Disease) are loaded, train/test splits are chosen based on
+dataset size, and multiple algorithms are evaluated sequentially.
 """
 
 from __future__ import annotations
@@ -45,12 +45,11 @@ DEFAULT_DATASET_OPTIONS: dict[int, dict[str, Any]] = {
         "short_name": "BreastCancer",
         "target_mode": "auto",
     },
-    # Der Original-Datensatz hat Targets 0..4; fuer robuste Binary-Modelle
-    # transformieren wir standardmaessig zu 0 vs >0.
+    # Heart Disease remains multiclass by default (original classes).
     45: {
         "name": "heart_disease",
         "short_name": "Heart",
-        "target_mode": "nonzero_is_positive",
+        "target_mode": "auto",
     },
 }
 
@@ -72,7 +71,7 @@ class DatasetBundle:
 
 
 def make_one_hot_encoder() -> OneHotEncoder:
-    """Kompatibel mit aelteren und neueren scikit-learn-Versionen."""
+    """Compatible with older and newer scikit-learn versions."""
     try:
         return OneHotEncoder(handle_unknown="ignore", sparse_output=False)
     except TypeError:
@@ -80,7 +79,7 @@ def make_one_hot_encoder() -> OneHotEncoder:
 
 
 def choose_split_params(n_samples: int) -> dict[str, Any]:
-    """Typische train/test-Splits je nach Datensatzgroesse."""
+    """Typical train/test split choices by dataset size."""
     if n_samples < 500:
         return {"test_size": 0.30}
     if n_samples < 5_000:
@@ -115,7 +114,7 @@ def build_preprocessor(X: pd.DataFrame) -> ColumnTransformer:
 
 
 def instantiate_classifier(model_cls: Callable[..., Any], random_state: int) -> Any:
-    """Setzt random_state nur, wenn der Konstruktor das unterstuetzt."""
+    """Set random_state only when the constructor supports it."""
     try:
         sig = inspect.signature(model_cls)
         if "random_state" in sig.parameters:
@@ -126,7 +125,7 @@ def instantiate_classifier(model_cls: Callable[..., Any], random_state: int) -> 
 
 
 def estimate_model_size(model: Any) -> float:
-    """Best-effort-Komplexitaetsmetrik, modellspezifisch mit Fallbacks."""
+    """Best-effort complexity metric with model-specific fallbacks."""
     if hasattr(model, "complexity_"):
         try:
             return float(getattr(model, "complexity_"))
@@ -174,13 +173,13 @@ def normalize_target(y_raw: pd.Series, target_mode: str) -> pd.Series:
         return (y_num.fillna(0) > 0).astype(int)
 
     if target_mode == "auto":
-        # Strings/Kategorien werden integer-kodiert; numerische Klassen bleiben erhalten.
+        # Encode string/categorical targets; keep numeric classes unchanged.
         if not pd.api.types.is_numeric_dtype(y):
             encoder = LabelEncoder()
             return pd.Series(encoder.fit_transform(y.astype(str)), index=y.index)
         return y
 
-    raise ValueError(f"Unbekannter target_mode: {target_mode}")
+    raise ValueError(f"Unknown target_mode: {target_mode}")
 
 
 def load_uci_dataset(cfg: DatasetConfig) -> DatasetBundle:
@@ -211,6 +210,19 @@ def evaluate_model(
     algorithm_cls: Callable[..., Any],
     random_state: int,
 ) -> dict[str, Any]:
+    def _is_probably_multiclass_unsupported(exc: Exception) -> bool:
+        msg = str(exc).lower()
+        patterns = [
+            "binary",
+            "multiclass",
+            "only supports",
+            "not support",
+            "unsupported target",
+            "label type",
+        ]
+        return any(p in msg for p in patterns)
+
+    n_classes_total = len(pd.unique(data.y))
     split_params = choose_split_params(len(data.X))
 
     X_train, X_test, y_train, y_test = train_test_split(
@@ -230,11 +242,18 @@ def evaluate_model(
         ]
     )
 
-    pipeline.fit(X_train, y_train)
-    y_pred = pipeline.predict(X_test)
+    try:
+        pipeline.fit(X_train, y_train)
+        y_pred = pipeline.predict(X_test)
+    except Exception as exc:
+        if n_classes_total > 2 and _is_probably_multiclass_unsupported(exc):
+            raise ValueError(
+                f"Algorithm '{algorithm_name}' does not support multiclass on dataset "
+                f"'{data.name}' (classes={n_classes_total}). Original error: {exc}"
+            ) from exc
+        raise
 
-    n_classes = len(pd.unique(y_test))
-    avg_mode = "binary" if n_classes == 2 else "macro"
+    avg_mode = "binary" if n_classes_total == 2 else "macro"
     f1 = f1_score(y_test, y_pred, average=avg_mode)
 
     model_size = estimate_model_size(pipeline.named_steps["model"])
@@ -257,7 +276,7 @@ def parse_csv_list(raw: str) -> list[str]:
 
 
 def parse_dataset_short_names(raw: str) -> tuple[dict[int, str], dict[str, str]]:
-    """Parst Kurzlabels aus '17:BreastCancer,heart_disease:Heart'."""
+    """Parse short labels from '17:BreastCancer,heart_disease:Heart'."""
     mapping_by_id: dict[int, str] = {}
     mapping_by_name: dict[str, str] = {}
     if not raw.strip():
@@ -269,14 +288,14 @@ def parse_dataset_short_names(raw: str) -> tuple[dict[int, str], dict[str, str]]
             continue
         if ":" not in item:
             raise ValueError(
-                f"Ungueltiges Kurzlabel-Format '{item}'. Erwartet: dataset_id:label"
+                f"Invalid short-label format '{item}'. Expected: dataset_id:label"
             )
         ds_id_raw, short_label = item.split(":", 1)
         key_raw = ds_id_raw.strip()
         short_label = short_label.strip()
         if not key_raw or not short_label:
             raise ValueError(
-                f"Ungueltiges Kurzlabel-Format '{item}'. Erwartet: dataset_id:label oder dataset_name:label"
+                f"Invalid short-label format '{item}'. Expected: dataset_id:label or dataset_name:label"
             )
 
         if key_raw.isdigit():
@@ -288,7 +307,7 @@ def parse_dataset_short_names(raw: str) -> tuple[dict[int, str], dict[str, str]]
 
 
 def auto_short_dataset_name(dataset_name: str, dataset_id: int) -> str:
-    """Erzeugt ein kurzes, lesbares Label fuer unbekannte Datensaetze."""
+    """Generate a short readable label for unknown datasets."""
     tokens = [tok for tok in str(dataset_name).replace("-", "_").split("_") if tok]
     if not tokens:
         return f"DS{dataset_id}"
@@ -312,7 +331,7 @@ def resolve_plot_dataset_label(
     user_short_names_by_id: dict[int, str],
     user_short_names_by_name: dict[str, str],
 ) -> str:
-    """Wendet Label-Prioritaet an: user-id > user-name > default-id > auto."""
+    """Apply label priority: user-id > user-name > default-id > auto."""
     if dataset_id in user_short_names_by_id:
         return user_short_names_by_id[dataset_id]
 
@@ -393,7 +412,7 @@ def plot_results(
         plot_metric(results_df, "model_size", axes[1], "Model Size", size_ylabel, error_bars)
         combined_path = output_dir / "uci_imodels_combined.png"
         fig.savefig(combined_path, dpi=150)
-        print(f"Figure gespeichert: {combined_path}")
+        print(f"Figure saved: {combined_path}")
         if no_show:
             plt.close(fig)
         else:
@@ -406,14 +425,14 @@ def plot_results(
         plot_metric(results_df, "f1", ax_f1, "F1 by Dataset and Algorithm", f1_ylabel, error_bars)
         f1_path = output_dir / "uci_imodels_f1.png"
         fig_f1.savefig(f1_path, dpi=150)
-        print(f"Figure gespeichert: {f1_path}")
+        print(f"Figure saved: {f1_path}")
 
         fig_size, ax_size = plt.subplots(figsize=(8, 5), constrained_layout=True)
         size_ylabel = "Model Size" if error_bars == "none" else f"Model Size (mean +/- {error_bars})"
         plot_metric(results_df, "model_size", ax_size, "Model Size", size_ylabel, error_bars)
         size_path = output_dir / "uci_imodels_model_size.png"
         fig_size.savefig(size_path, dpi=150)
-        print(f"Figure gespeichert: {size_path}")
+        print(f"Figure saved: {size_path}")
 
         if no_show:
             plt.close(fig_f1)
@@ -422,11 +441,11 @@ def plot_results(
             plt.show()
         return
 
-    raise ValueError(f"Unbekannter plot_mode: {plot_mode}")
+    raise ValueError(f"Unknown plot_mode: {plot_mode}")
 
 
 def aggregate_results(results_df: pd.DataFrame) -> pd.DataFrame:
-    """Aggregiert Rohlaeufe zu Mittelwert/Std/95%-KI pro Datensatz+Algorithmus."""
+    """Aggregate raw runs to mean/std/95%-CI per dataset+algorithm."""
     if results_df.empty:
         return pd.DataFrame()
 
@@ -465,14 +484,14 @@ def aggregate_results(results_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def normal_cdf(x: float) -> float:
-    """Kumulative Verteilungsfunktion der Standardnormalverteilung."""
+    """CDF of the standard normal distribution."""
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
 def paired_ttest_normal_approx(diffs: pd.Series) -> tuple[float, float, float]:
-    """Gepaarten t-Test approximieren (zweiseitig) ohne externe Statistik-Dependencies.
+    """Approximate paired t-test (two-sided) without external stats dependencies.
 
-    Rueckgabe: (t_stat, p_value, mean_diff)
+    Returns: (t_stat, p_value, mean_diff)
     """
     clean = diffs.dropna().astype(float)
     n = len(clean)
@@ -483,19 +502,19 @@ def paired_ttest_normal_approx(diffs: pd.Series) -> tuple[float, float, float]:
     std_diff = float(clean.std(ddof=1))
 
     if std_diff == 0.0:
-        # Keine Varianz: identische Differenzen in allen Runs.
+        # No variance: all run-wise differences are identical.
         if mean_diff == 0.0:
             return 0.0, 1.0, mean_diff
         return float("inf") if mean_diff > 0 else float("-inf"), 0.0, mean_diff
 
     t_stat = mean_diff / (std_diff / math.sqrt(n))
-    # Normalapproximation fuer den p-Wert, robust ohne SciPy.
+    # Normal approximation for p-value, robust without SciPy.
     p_value = 2.0 * (1.0 - normal_cdf(abs(t_stat)))
     return float(t_stat), float(p_value), mean_diff
 
 
 def compute_significance_pairs(results_df: pd.DataFrame, alpha: float) -> pd.DataFrame:
-    """Paarweise Signifikanzvergleiche je Datensatz auf Basis gleicher Seeds."""
+    """Pairwise significance comparisons per dataset using shared seeds."""
     if results_df.empty:
         return pd.DataFrame()
 
@@ -593,21 +612,21 @@ def run_benchmark(
     }
 
     if n_runs < 1:
-        raise ValueError("n_runs muss >= 1 sein")
+        raise ValueError("n_runs must be >= 1")
 
     invalid_algorithms = [name for name in algorithm_names if name not in ALGORITHM_REGISTRY]
     if invalid_algorithms:
         known = ", ".join(ALGORITHM_REGISTRY.keys())
-        raise ValueError(f"Unbekannte Algorithmen: {invalid_algorithms}. Verfuegbar: {known}")
+        raise ValueError(f"Unknown algorithms: {invalid_algorithms}. Available: {known}")
 
     rows: list[dict[str, Any]] = []
 
     for ds_cfg in dataset_configs:
-        print(f"\n--- Lade Datensatz {ds_cfg.dataset_id}: {ds_cfg.name} ---")
+        print(f"\n--- Loading dataset {ds_cfg.dataset_id}: {ds_cfg.name} ---")
         data = load_uci_dataset(ds_cfg)
         class_count = len(pd.unique(data.y))
         print(
-            f"Samples={len(data.X)}, Features={data.X.shape[1]}, Klassen={class_count}, "
+            f"Samples={len(data.X)}, Features={data.X.shape[1]}, Classes={class_count}, "
             f"target_mode={ds_cfg.target_mode}"
         )
 
@@ -615,7 +634,7 @@ def run_benchmark(
             algo_cls = ALGORITHM_REGISTRY[algo_name]
             for run_idx in range(n_runs):
                 seed = random_state + run_idx
-                print(f"  -> Trainiere {algo_name} (run {run_idx + 1}/{n_runs}, seed={seed}) ...", end=" ")
+                print(f"  -> Training {algo_name} (run {run_idx + 1}/{n_runs}, seed={seed}) ...", end=" ")
                 try:
                     row = evaluate_model(data, algo_name, algo_cls, random_state=seed)
                     row["run_idx"] = run_idx
@@ -629,7 +648,7 @@ def run_benchmark(
                     )
                     print(f"ok | F1={row['f1']:.4f}, model_size={size_txt}")
                 except Exception as exc:
-                    print(f"fehlgeschlagen ({type(exc).__name__}: {exc})")
+                    print(f"failed ({type(exc).__name__}: {exc})")
                     rows.append(
                         {
                             "dataset_id": data.dataset_id,
@@ -668,76 +687,76 @@ def run_benchmark(
     output_dir.mkdir(parents=True, exist_ok=True)
     csv_raw_path = output_dir / "uci_imodels_results.csv"
     results_df.to_csv(csv_raw_path, index=False)
-    print(f"\nCSV gespeichert (Rohdaten): {csv_raw_path}")
+    print(f"\nCSV saved (raw): {csv_raw_path}")
 
     csv_agg_path = output_dir / "uci_imodels_results_agg.csv"
     agg_df.to_csv(csv_agg_path, index=False)
-    print(f"CSV gespeichert (Aggregat): {csv_agg_path}")
+    print(f"CSV saved (aggregate): {csv_agg_path}")
 
     if significance_check:
         csv_sig_path = output_dir / "uci_imodels_significance.csv"
         significance_df.to_csv(csv_sig_path, index=False)
-        print(f"CSV gespeichert (Signifikanz): {csv_sig_path}")
+        print(f"CSV saved (significance): {csv_sig_path}")
 
     plot_results(agg_df, output_dir=output_dir, plot_mode=plot_mode, no_show=no_show, error_bars=error_bars)
     return results_df, agg_df, significance_df
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="UCI + imodels Benchmark")
+    parser = argparse.ArgumentParser(description="UCI + imodels benchmark")
     parser.add_argument(
         "--dataset-ids",
         default="17,45",
-        help="Kommagetrennte Liste von UCI-Dataset-IDs (z.B. 17,45)",
+        help="Comma-separated list of UCI dataset IDs (e.g., 17,45)",
     )
     parser.add_argument(
         "--algorithms",
         default="SlipperClassifier,GreedyRuleListClassifier,C45TreeClassifier,GreedyTreeClassifier",
-        help="Kommagetrennte Liste von Algorithmusnamen",
+        help="Comma-separated list of algorithm names",
     )
     parser.add_argument(
         "--plot-mode",
         default="combined",
         choices=["combined", "separate"],
-        help="combined = eine Figure mit zwei Panels, separate = zwei Figures",
+        help="combined = one figure with two panels, separate = two figures",
     )
     parser.add_argument("--random-state", type=int, default=42)
     parser.add_argument(
         "--n-runs",
         type=int,
         default=1,
-        help="Anzahl Wiederholungen pro Datensatz+Algorithmus mit Seeds random_state+i",
+        help="Number of runs per dataset+algorithm with seeds random_state+i",
     )
     parser.add_argument(
         "--error-bars",
         default="none",
         choices=["none", "std", "ci95"],
-        help="Fehlerbalken im Plot: keine, Standardabweichung oder 95%%-Konfidenzintervall",
+        help="Error bars in plots: none, standard deviation, or 95%% confidence interval",
     )
     parser.add_argument(
         "--dataset-short-names",
         default="",
         help=(
-            "Optionale Plot-Kurzlabels als Liste, z.B. "
+            "Optional short plot labels as a list, e.g. "
             "17:BreastCancer,heart_disease:Heart"
         ),
     )
     parser.add_argument(
         "--significance-check",
         action="store_true",
-        help="Fuehrt optional paarweise Signifikanztests je Datensatz aus",
+        help="Optionally run pairwise significance tests per dataset",
     )
     parser.add_argument(
         "--alpha",
         type=float,
         default=0.05,
-        help="Signifikanzniveau fuer den optionalen Test (Standard 0.05)",
+        help="Significance level for the optional test (default 0.05)",
     )
     parser.add_argument("--output-dir", default="results")
     parser.add_argument(
         "--no-show",
         action="store_true",
-        help="Matplotlib-Fenster nicht anzeigen (nur Dateien speichern)",
+        help="Do not show matplotlib windows (save files only)",
     )
     return parser
 
@@ -751,7 +770,7 @@ def main() -> None:
     dataset_short_names_by_id, dataset_short_names_by_name = parse_dataset_short_names(args.dataset_short_names)
 
     if not (0.0 < args.alpha < 1.0):
-        raise ValueError("alpha muss zwischen 0 und 1 liegen")
+        raise ValueError("alpha must be between 0 and 1")
 
     results_df, agg_df, significance_df = run_benchmark(
         dataset_ids=dataset_ids,
@@ -768,10 +787,10 @@ def main() -> None:
         alpha=args.alpha,
     )
 
-    print("\nErgebnisse (Rohdaten, Ausschnitt):")
+    print("\nResults (raw, excerpt):")
     print(results_df[["dataset", "algorithm", "seed", "f1", "model_size"]].head(12).to_string(index=False))
 
-    print("\nErgebnisse (Aggregat):")
+    print("\nResults (aggregate):")
     print(
         agg_df[
             [
@@ -789,9 +808,9 @@ def main() -> None:
     )
 
     if args.significance_check:
-        print("\nSignifikanz (paarweise, zweiseitig, Normalapproximation):")
+        print("\nSignificance (pairwise, two-sided, normal approximation):")
         if significance_df.empty:
-            print("Keine paarweisen Vergleiche verfuegbar.")
+            print("No pairwise comparisons available.")
         else:
             print(
                 significance_df[
