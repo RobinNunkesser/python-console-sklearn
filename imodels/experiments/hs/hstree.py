@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from sklearn.datasets import load_iris
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.model_selection import train_test_split
-from sklearn.tree import export_graphviz, plot_tree
+from sklearn.tree import plot_tree
 
 from imodels import GreedyTreeClassifier, HSTreeClassifier
 
@@ -20,6 +20,78 @@ def _get_tree_estimator(model):
     return None
 
 
+def _abbreviate_feature(name: str) -> str:
+    """Convert e.g. 'petal length (cm)' -> 'p<sub>l</sub>'.
+
+    Takes the first character of the first two non-parenthesised words and
+    wraps the second in an HTML subscript tag so the DOT label renders
+    compactly (e.g. p_l for petal length).
+    """
+    words = [w for w in name.split() if "(" not in w]
+    if len(words) >= 2:
+        return f"{words[0][0]}<sub>{words[1][0]}</sub>"
+    return name[:4]
+
+
+def export_compact_dot(estimator, feature_names, class_names) -> str:
+    """Build a compact Graphviz DOT string for a fitted sklearn DecisionTree.
+
+    * Inner nodes show only the split condition using abbreviated feature names.
+    * Leaf nodes show only the class-probability vector rounded to 2 dp
+      (integer when exact, e.g. ``(1,0,0)``).
+    * True (<=) branches are solid lines, False (>) branches are dashed.
+    """
+    tree = estimator.tree_
+    LEAF = -1  # sklearn stores TREE_LEAF = -1 in children_left for leaves
+
+    abbrevs = [_abbreviate_feature(f) for f in feature_names]
+
+    def _fmt_leaf(node_id: int) -> str:
+        vals = tree.value[node_id][0]
+        total = vals.sum()
+        fracs = vals / total if total > 0 else vals
+        parts = []
+        for v in fracs:
+            if abs(v - round(v)) < 0.005:
+                parts.append(str(int(round(v))))
+            else:
+                parts.append(f"{v:.2f}")
+        return f"({','.join(parts)})"
+
+    lines = [
+        "digraph Tree {",
+        'node [shape=plain, color="black", fontname="helvetica"] ;',
+        'edge [fontname="helvetica"] ;',
+    ]
+
+    def _walk(node_id: int) -> None:
+        left = tree.children_left[node_id]
+        right = tree.children_right[node_id]
+
+        if left == LEAF:
+            label = _fmt_leaf(node_id)
+        else:
+            feat = abbrevs[tree.feature[node_id]]
+            thresh = tree.threshold[node_id]
+            label = f"{feat} &#8804; {thresh:.2f}"
+
+        lines.append(f"{node_id} [label=<{label}>] ;")
+
+        if left != LEAF:
+            lines.append(
+                f'{node_id} -> {left} [labeldistance=2.5, labelangle=45, style="solid"] ;'
+            )
+            _walk(left)
+            lines.append(
+                f'{node_id} -> {right} [labeldistance=2.5, labelangle=-45, style="dashed"] ;'
+            )
+            _walk(right)
+
+    _walk(0)
+    lines.append("}")
+    return "\n".join(lines)
+
+
 def save_tree_visualizations(model, feature_names, class_names, file_prefix, out_dir="outputs"):
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
@@ -29,7 +101,7 @@ def save_tree_visualizations(model, feature_names, class_names, file_prefix, out
         print("No tree estimator found on the fitted model. Skipping visualization export.")
         return
 
-    # Always create a PNG via matplotlib (works without Graphviz installation).
+    # Matplotlib PNG – compact: no impurity, no sample counts, proportions only.
     plt.figure(figsize=(10, 6), dpi=150)
     plot_tree(
         estimator,
@@ -38,6 +110,7 @@ def save_tree_visualizations(model, feature_names, class_names, file_prefix, out
         filled=True,
         rounded=True,
         impurity=False,
+        proportion=True,
         fontsize=8,
     )
     png_path = out_path / f"{file_prefix}_iris_matplotlib.png"
@@ -46,33 +119,28 @@ def save_tree_visualizations(model, feature_names, class_names, file_prefix, out
     plt.close()
     print(f"Saved tree image (matplotlib): {png_path}")
 
-    # Optionally export Graphviz DOT and render to PNG when graphviz Python package and binary exist.
-    dot_path = out_path / f"{file_prefix}_iris_graphviz.dot"
-    export_graphviz(
-        estimator,
-        out_file=str(dot_path),
-        feature_names=feature_names,
-        class_names=class_names,
-        filled=True,
-        rounded=True,
-        special_characters=True,
-    )
-    print(f"Saved Graphviz DOT file: {dot_path}")
+    # Compact DOT export.
+    dot_content = export_compact_dot(estimator, feature_names, class_names)
+    dot_path = out_path / f"{file_prefix}_iris_compact.dot"
+    dot_path.write_text(dot_content)
+    print(f"Saved compact Graphviz DOT file: {dot_path}")
 
+    # Render DOT to PNG when the graphviz Python package and binary are available.
     try:
         from graphviz import Source
 
-        source = Source.from_file(str(dot_path))
+        source = Source(dot_content)
         rendered = source.render(
-            filename=f"{file_prefix}_iris_graphviz",
+            filename=f"{file_prefix}_iris_compact",
             directory=str(out_path),
             format="png",
             cleanup=True,
         )
-        print(f"Saved tree image (Graphviz): {rendered}")
+        print(f"Saved compact tree image (Graphviz): {rendered}")
     except Exception as exc:
         print(
-            "Graphviz PNG render skipped. Install `graphviz` Python package and Graphviz binary to enable it. "
+            "Graphviz PNG render skipped. "
+            "Install `graphviz` Python package and Graphviz binary to enable it. "
             f"Reason: {exc}"
         )
 
@@ -96,11 +164,11 @@ def main():
     models = [
         (
             "hstree",
-            HSTreeClassifier(max_leaf_nodes=4, reg_param=10, random_state=42),
+            HSTreeClassifier(random_state=42),
         ),
         (
             "greedytree",
-            GreedyTreeClassifier(max_leaf_nodes=4, random_state=42),
+            GreedyTreeClassifier(random_state=42),
         ),
     ]
 
