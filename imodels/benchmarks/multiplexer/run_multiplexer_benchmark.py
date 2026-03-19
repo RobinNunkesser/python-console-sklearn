@@ -276,7 +276,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Comma-separated algorithm names (imodels + ExSTraCS variants)",
     )
     parser.add_argument("--target-col", default="class")
-    parser.add_argument("--n-runs", type=int, default=3)
+    parser.add_argument("--n-runs", type=int, default=10)
     parser.add_argument("--random-state", type=int, default=42)
     parser.add_argument("--learning-iterations", type=int, default=100000)
     parser.add_argument("--population-size", type=int, default=1000)

@@ -5,10 +5,11 @@ Defaults are aligned with the existing benchmark scripts and run in this order:
 1) UCI imodels
 2) UCI ExSTraCS
 3) UCI RuleKit
-4) UCI merged plots
-5) Multiplexer imodels+ExSTraCS
-6) Multiplexer RuleKit
-7) Multiplexer merged plots
+4) LogicGP plot-data generation
+5) UCI merged plots
+6) Multiplexer imodels+ExSTraCS
+7) Multiplexer RuleKit
+8) Multiplexer merged plots
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ STEPS: list[Step] = [
     Step("uci_imodels", "UCI: imodels", "benchmarks/uci/run_imodels_benchmark.py"),
     Step("uci_exstracs", "UCI: ExSTraCS", "benchmarks/uci/run_exstracs_benchmark.py"),
     Step("uci_rulekit", "UCI: RuleKit", "benchmarks/uci/run_rulekit_benchmark.py"),
+    Step("logicgp_plot_data", "LogicGP: Build plot data", "logicgp_make_plot_data.py"),
     Step("uci_merge", "UCI: Merge plots", "benchmarks/uci/merge_benchmark_plots.py"),
     Step("mux_imodels", "Multiplexer: imodels+ExSTraCS", "benchmarks/multiplexer/run_multiplexer_benchmark.py"),
     Step("mux_rulekit", "Multiplexer: RuleKit", "benchmarks/multiplexer/run_rulekit_multiplexer_benchmark.py"),
@@ -87,8 +89,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def should_use_no_show(step: Step) -> bool:
-    # All benchmark/merge scripts in this repo support --no-show.
-    return True
+    # Data-prep-only steps do not expose --no-show.
+    return step.key not in {"logicgp_plot_data"}
 
 
 def quick_args_for_step(step: Step) -> list[str]:

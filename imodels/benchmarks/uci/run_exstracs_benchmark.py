@@ -333,8 +333,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--population-size", type=int, default=1000,
         help="ExSTraCS maximum population size N (default: 1000)",
     )
-    parser.add_argument("--n-runs", type=int, default=3,
-                        help="Runs per dataset+algorithm (default: 3)")
+    parser.add_argument("--n-runs", type=int, default=10,
+                        help="Runs per dataset+algorithm (default: 10)")
     parser.add_argument("--random-state", type=int, default=42)
     parser.add_argument(
         "--dataset-short-names", default="",

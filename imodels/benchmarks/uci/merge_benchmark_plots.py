@@ -105,7 +105,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=(
             "benchmarks/outputs/imodels/uci_imodels_plot_data.csv,"
             "benchmarks/outputs/exstracs/exstracs_plot_data.csv,"
-            "benchmarks/outputs/rulekit/rulekit_plot_data.csv"
+            "benchmarks/outputs/rulekit/rulekit_plot_data.csv,"
+            "benchmarks/outputs/logicgp/logicgp_plot_data.csv"
         ),
     )
     parser.add_argument("--plot-mode", default="combined", choices=["combined", "separate", "by_dataset"])

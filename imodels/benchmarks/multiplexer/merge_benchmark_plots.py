@@ -55,7 +55,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--input-csvs",
         default=(
             "benchmarks/outputs/multiplexer/multiplexer_plot_data.csv,"
-            "benchmarks/outputs/multiplexer/rulekit/rulekit_multiplexer_plot_data.csv"
+            "benchmarks/outputs/multiplexer/rulekit/rulekit_multiplexer_plot_data.csv,"
+            "benchmarks/outputs/multiplexer/logicgp/multiplexer_plot_data.csv"
         ),
         help=(
             "Comma-separated list of multiplexer plot-data CSV files "

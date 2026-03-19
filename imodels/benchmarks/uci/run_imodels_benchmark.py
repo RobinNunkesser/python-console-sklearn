@@ -766,7 +766,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--n-runs",
         type=int,
-        default=3,
+        default=10,
         help="Number of runs per dataset+algorithm with seeds random_state+i",
     )
     parser.add_argument(

@@ -232,7 +232,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Comma-separated algorithm names (default: RuleClassifier)",
     )
     parser.add_argument("--target-col", default="class")
-    parser.add_argument("--n-runs", type=int, default=3)
+    parser.add_argument("--n-runs", type=int, default=10)
     parser.add_argument("--random-state", type=int, default=42)
     parser.add_argument("--plot-mode", default="combined", choices=["combined", "separate", "by_dataset"])
     parser.add_argument("--plot-style", default="dots", choices=["dots", "bars"])
