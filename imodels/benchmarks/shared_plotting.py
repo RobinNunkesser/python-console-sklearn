@@ -185,7 +185,7 @@ def add_dataset_background_bands(ax: plt.Axes, *, config: PlotConfig = DEFAULT_P
         bounds = [ticks[0] - first_half_step, *midpoints, ticks[-1] + last_half_step]
 
     for idx, (lower, upper) in enumerate(zip(bounds, bounds[1:])):
-        if idx % 2 == 0:
+        if idx % 2 == 1:
             center = (lower + upper) / 2
             half_height = (upper - lower) * 0.5 * config.style.dataset_band_fill_fraction
             band_lower = center - half_height
@@ -206,6 +206,7 @@ def plot_metric_panel(
     df: pd.DataFrame,
     *,
     dataset_label_col: str,
+    dataset_order: list[str] | None = None,
     metric: str,
     ax: plt.Axes,
     title: str,
@@ -220,6 +221,10 @@ def plot_metric_panel(
         raise ValueError(f"Missing required column for plotting: {mean_col}")
 
     raw_pivot = df.pivot(index=dataset_label_col, columns="algorithm", values=mean_col)
+    if dataset_order is not None:
+        ordered_labels = [label for label in dataset_order if label in raw_pivot.index]
+        remaining_labels = [label for label in raw_pivot.index if label not in ordered_labels]
+        raw_pivot = raw_pivot.reindex(ordered_labels + remaining_labels)
     display_map = _algorithm_display_map(list(raw_pivot.columns))
     pivot = raw_pivot.rename(columns=display_map)
 
@@ -335,6 +340,7 @@ def plot_benchmark_results(
                 plot_metric_panel(
                     subset,
                     dataset_label_col=dataset_label_col,
+                    dataset_order=None,
                     metric=spec["metric"],
                     ax=ax,
                     title=panel_title,
@@ -355,9 +361,24 @@ def plot_benchmark_results(
         return
 
     if plot_mode == "combined":
+        primary_metric = metrics[0]["metric"] if metrics else None
+        dataset_order: list[str] | None = None
+        if primary_metric is not None:
+            primary_mean_col = f"{primary_metric}_mean"
+            if primary_mean_col in df.columns:
+                dataset_scores = (
+                    df.groupby(dataset_label_col, dropna=True)[primary_mean_col]
+                    .sum(min_count=1)
+                    .sort_values(kind="stable")
+                )
+                dataset_order = list(dataset_scores.index)
+
         # Calculate height based on number of datasets
-        dataset_values = [v for v in df[dataset_label_col].tolist() if pd.notna(v)]
-        n_datasets = len(list(dict.fromkeys(dataset_values)))
+        if dataset_order is not None:
+            n_datasets = len(dataset_order)
+        else:
+            dataset_values = [v for v in df[dataset_label_col].tolist() if pd.notna(v)]
+            n_datasets = len(list(dict.fromkeys(dataset_values)))
         combined_height = max(
             config.figure.combined_min_height,
             n_datasets * config.figure.combined_height_per_dataset
@@ -378,6 +399,7 @@ def plot_benchmark_results(
             plot_metric_panel(
                 df,
                 dataset_label_col=dataset_label_col,
+                dataset_order=dataset_order,
                 metric=spec["metric"],
                 ax=ax,
                 title=spec["title"],
@@ -387,6 +409,13 @@ def plot_benchmark_results(
                 xscale=spec.get("xscale", "linear"),
                 config=config,
             )
+            if spec.get("metric") == "f1":
+                ax.set_xlim(0.0, 1.0)
+            elif spec.get("metric") == "model_size":
+                ax.set_xscale("symlog", linthresh=1.0, linscale=1.0)
+                ax.set_xlim(1.0, 1000.0)
+                ax.set_xticks([1.0, 10.0, 100.0, 1000.0])
+                ax.set_xticklabels(["1", "10", "100", "1000"])
             # Combined layout: keep panels compact and avoid redundant labels.
             ax.set_title("")
             ax.set_ylabel("")
@@ -416,6 +445,7 @@ def plot_benchmark_results(
             plot_metric_panel(
                 df,
                 dataset_label_col=dataset_label_col,
+                dataset_order=None,
                 metric=spec["metric"],
                 ax=ax,
                 title=spec["separate_title"],
